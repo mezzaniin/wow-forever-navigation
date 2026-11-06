@@ -111,7 +111,7 @@ local CELL, SNAP, STEP = 40, 12, 20
 local function cellKey(c, cx, cy) return c .. ":" .. cx .. ":" .. cy end
 
 local function addRoadNode(i, p)
-    roadNodes[i] = { cont = p[1], wx = p[2], wy = p[3], land = p[4], label = "Weg", road = i }
+    roadNodes[i] = { cont = p[1], wx = p[2], wy = p[3], land = p[4], label = "Weg", road = i, id = "r" }
     local k = cellKey(p[1], math.floor(p[2] / CELL), math.floor(p[3] / CELL))
     grid[k] = grid[k] or {}
     table.insert(grid[k], i)
@@ -198,6 +198,8 @@ local OFFROAD_PENALTY = 1.6   -- Schätzung bis der Rasterweg berechnet ist
 
 local function plan(start, target)
     local speed = db.speed or 7
+    -- id: stabile Kennung je Knoten (für den Routen-Hash der Webkarte, siehe Bridge.lua)
+    start.id, target.id = start.id or "start", "goal"
     local keys, kadj = { start, target }, { {}, {} }
     local function addKey(n) keys[#keys + 1] = n; kadj[#keys] = {}; return #keys end
     local function kedge(i, j, cost, kind, name)
@@ -207,6 +209,8 @@ local function plan(start, target)
     local faction = UnitFactionGroup("player")
     for _, t in ipairs(ns.transports) do
         local a, b = endpoint(t, "a"), endpoint(t, "b")
+        if a then a.id = t.key .. ":a" end
+        if b then b.id = t.key .. ":b" end
         if a and b and (not t.faction or t.faction == faction) then
             local ia, ib = addKey(a), addKey(b)
             kedge(ia, ib, t.cost, t.kind, t.key)
@@ -216,13 +220,18 @@ local function plan(start, target)
     for _, tp in ipairs(ns.teleports) do
         if IsPlayerSpell and IsPlayerSpell(tp.spell) then
             local n = makeNode(tp.to[1], tp.to[2] / 100, tp.to[3] / 100, tp.to[4])
+            if n then n.id = tp.key end
             if n then kedge(1, addKey(n), tp.cost, "teleport", tp.name) end
         end
     end
     local fl = {}
-    for _, f in pairs(cdb.flights) do
+    local fids = {}
+    for id in pairs(cdb.flights) do fids[#fids + 1] = id end
+    table.sort(fids)   -- feste Reihenfolge (gleiche Ergebnisse wie die Webkarte)
+    for _, id in ipairs(fids) do
+        local f = cdb.flights[id]
         local n = makeNode(f.m, f.x, f.y, "Flugmeister " .. (f.name or "?"))
-        if n then fl[#fl + 1] = addKey(n) end
+        if n then n.id = "f" .. id; n.taxi = id; fl[#fl + 1] = addKey(n) end
     end
     for _, i in ipairs(fl) do
         for _, j in ipairs(fl) do
@@ -819,6 +828,9 @@ end)
 ---------------------------------------------------------------------------
 -- Hauptschleife
 ---------------------------------------------------------------------------
+-- Zustand für Bridge.lua (Webkarte): Ziel, Schritte, Transit, Einstellungen
+function ns.getState() return goal, route, transit, db, cdb end
+
 local function stopRoute(text)
     goal, route, transit = nil, nil, nil
     clearArrow(); drawMap(); frame:Hide()
@@ -922,6 +934,8 @@ function update()
     end
     local navPending = refine(steps)
     route = steps
+    -- Schrittzähler für die Webkarte: Schritte seit Routenbeginn
+    if ns.stepGoal ~= goal or not ns.stepTotal or #steps > ns.stepTotal then ns.stepGoal, ns.stepTotal = goal, #steps end
 
     local first = steps[1]
     if (first.kind == "boat" or first.kind == "zeppelin" or first.kind == "tram" or first.kind == "portal")

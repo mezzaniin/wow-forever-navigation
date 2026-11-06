@@ -25,7 +25,8 @@ mit TomTom-Pfeil und in einem Schritt-Fenster an.
 ## Installation
 
 ```bash
-./install.sh "/pfad/zu/World of Warcraft"
+./install.sh                              # sucht WoW Forever unter Steam/Proton, Lutris, Wine
+./install.sh "/pfad/zu/World of Warcraft" # oder Pfad angeben
 ```
 Danach WoW neu starten und **RoutePlaner** in der Addon-Liste aktivieren.
 Empfohlen: [TomTom](https://www.curseforge.com/wow/addons/tomtom) (Pfeil) und Questie (Suche).
@@ -38,6 +39,15 @@ Einmalig bei einem Flugmeister die Flugkarte öffnen, damit das Addon deine Flug
 `/route stop`, `/route fenster`, `/route suche <text>`, `/route tempo <yd/s>`,
 `/route punkte`, `/route punkt <key>:a|b` (Steg/Portal-Position korrigieren),
 `/route wege [an|aus|löschen]`, `/route stufen`.
+
+## Webkarte (Forever-Karte) synchron
+
+`Bridge.lua` zeichnet nach `/route web an` oben links eine Leiste farbiger Pixel (56 Zellen à 4 px, per
+`/route web größe <px>` änderbar) mit Position, Blickrichtung, Ziel, Routen-Hash, Schritt, bekannten
+Flugpunkten, Fraktion/Tempo/Teleports sowie Klasse, Rasse, Stufe und Talentpunkten. Das Begleitprogramm
+`forever-karte` (Repo wowmap, `companion/`) liest sie per Bildschirmaufnahme und schickt sie an die Webkarte;
+diese plant mit denselben Daten (NavData.lua, Data.lua) und demselben Algorithmus und zeigt dieselbe Route.
+Kein Netzwerk im Addon, keine geschützten Funktionen. `/route web status` zeigt Leiste, Position und Hash.
 
 ## Navigationsdaten neu erzeugen
 
