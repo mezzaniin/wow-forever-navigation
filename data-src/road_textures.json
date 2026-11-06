@@ -1,11 +1,18 @@
 {
- "_beschreibung": "Geländetexturen (ADT MDID, FileDataID -> Tileset-Name aus dem Community-Listfile), die als Straße/Weg/gepflasterter Platz gelten. Kuratiert aus work/tex_inventory.json (alle im Forever-Client 1.60.1.70790 auf Karte 0/1 benutzten Texturen). Nicht aufgenommen: Grund-Erde (*dirt*, desolace/tanaris *footprint*: flächig), Gras, Fels, Nordend-Titan-Platten (nur Einzelchunks).",
+ "_beschreibung": "Geländetexturen (ADT MDID, FileDataID -> Tileset-Name aus dem Community-Listfile), die als Straße/Weg/gepflasterter Platz gelten. Kuratiert je Zone aus work/tex_audit.json (tools/tex_audit.py) und Kontrollbildern (tools/tex_view.py) gegen die aufgedeckte Kartengrafik. Je Textur optional \"zonen\" (UiMapIDs; sonst überall) und \"art\" (\"hart\" = Gewicht zählt direkt, Standard; \"weich\" = nur schmale lange Bänder auf freiem Gelände). Nicht aufgenommen: flächige Grund-Erde/Fels/Schnee (auch wenn Wege teilweise darauf liegen: zu viele Fehltreffer an Hängen und Ufern).",
  "build": "1.60.1.70790",
- "min_anteil": 0.3,
- "glaettung": 0.6,
- "min_fein": 2,
+ "_parameter": "lo/hi: Hysterese-Schwellen auf das geglättete Straßengewicht (2,5-yd-Feinraster); glaettung: Gauß-Sigma in Feinpixeln; min_laenge: kürzere Flecken (yd) fallen weg; stichweg: Äste mit freiem Ende bis zu dieser Länge (yd) werden abgeschnitten; luecke: Lücken bis zu dieser Länge (yd) in Laufrichtung werden geschlossen; min_skelett: Mittellinien-Pixel je Zelle; platz: Straßenflächenanteil je Zelle für Plätze; min_zellen/min_ausdehnung: kleinere Straßeninseln (Zellen) fallen weg; gesperrt_max: größte Zahl gesperrter Zellen, die ein Straßenstück als Verbindung öffnen darf. weich_*: nur für Texturen mit art=weich (Linienfilter über weich_laenge/weich_abstand, Mindestgewicht weich_min, nicht näher als weich_wasser/weich_berg Zellen an Wasser/Berg). schwelle/faktor je Textur: Gewicht unter der Schwelle zählt nicht (flächig dünn aufgetragene Texturen).",
+ "lo": 0.12,
+ "hi": 0.28,
+ "glaettung": 0.8,
+ "min_laenge": 40,
+ "stichweg": 15,
+ "luecke": 20,
+ "min_skelett": 2,
+ "platz": 0.5,
  "min_zellen": 6,
- "_parameter": "min_anteil: geglätteter Straßenanteil je 5-yd-Feinpixel; glaettung: Gauß-Sigma in Feinpixeln; min_fein: Straßen-Feinpixel (von 16) je 20-yd-Zelle; min_zellen: kleinere Straßeninseln werden verworfen; min_ausdehnung: Straßeninseln müssen mindestens so viele Zellen lang sein (Flecken der Straßentextur in Durotar)",
+ "min_ausdehnung": 5,
+ "gesperrt_max": 40,
  "texturen": {
   "186766": {
    "name": "aerie peaks/aeriepeaksrockroadbase_s.blp",
@@ -18,6 +25,14 @@
   "186813": {
    "name": "araithihighlands/arathihighlandscityfloor_s.blp",
    "chunks": 88
+  },
+  "186817": {
+   "name": "araithihighlands/arathihighlandsdirt_s.blp",
+   "zonen": [
+    "1417"
+   ],
+   "art": "weich",
+   "_notiz": "Arathi: Erdwege durchs Grasland (auch flächig an Hängen -> weich)"
   },
   "186839": {
    "name": "ashenvale/ashenvaleroad_s.blp",
@@ -35,6 +50,14 @@
    "name": "burningstepps/burningsteppsbrick01_s.blp",
    "chunks": 472
   },
+  "186941": {
+   "name": "burningstepps/burningsteppscharcoal01_s.blp",
+   "zonen": [
+    "1427"
+   ],
+   "_notiz": "Sengende Schlucht: Straße Steinwerkpass–Schwarzfels",
+   "schwelle": 0.5
+  },
   "186962": {
    "name": "burningstepps/burningsteppsspireroad01_s.blp",
    "chunks": 253
@@ -42,6 +65,28 @@
   "186975": {
    "name": "darkshore/darkshoreroad_s.blp",
    "chunks": 302
+  },
+  "186994": {
+   "name": "deadwind pass/deadwindpassshale_s.blp",
+   "zonen": [
+    "1430"
+   ],
+   "_notiz": "Gebirgspass der Totenwinde: Straßen"
+  },
+  "187000": {
+   "name": "desolace/desolacecracks_s.blp",
+   "zonen": [
+    "1443"
+   ],
+   "_notiz": "Desolace: Straßen",
+   "schwelle": 0.35
+  },
+  "187004": {
+   "name": "desolace/desolacedirtfootprints_s.blp",
+   "zonen": [
+    "2652"
+   ],
+   "_notiz": "Shen'dralas: Wege"
   },
   "187035": {
    "name": "durotar/durotarroad_s.blp",
@@ -107,6 +152,10 @@
    "name": "ironforge/ironforgerock06road2_s.blp",
    "chunks": 451
   },
+  "188572": {
+   "name": "ironforge/ironforgerock09browncracks_s.blp",
+   "chunks": 237
+  },
   "188584": {
    "name": "kalidar/kalidardarnroad_s.blp",
    "chunks": 222
@@ -131,6 +180,13 @@
    "name": "plaguelandseast/eastplaguedroadbase_s.blp",
    "chunks": 353
   },
+  "188729": {
+   "name": "plaguelandswest/westplaguedbasedirt_s.blp",
+   "zonen": [
+    "1422"
+   ],
+   "_notiz": "Westliche Pestländer: Weg nach Herdweiler, Feldwege"
+  },
   "188763": {
    "name": "redridge/redridgerockroadbase_s.blp",
    "chunks": 309
@@ -146,6 +202,14 @@
   "188854": {
    "name": "swamp of sorrows/swampsorrowsstoneroad07_s.blp",
    "chunks": 239
+  },
+  "188895": {
+   "name": "the badlands/badlandssand_s.blp",
+   "zonen": [
+    "1418"
+   ],
+   "_notiz": "Ödland: Wege aus Sand (flächig nur stellenweise)",
+   "schwelle": 0.5
   },
   "188911": {
    "name": "the blasted lands/blastedlandsroad_s.blp",
@@ -163,6 +227,13 @@
    "name": "wetlands/wetlandsroad01_s.blp",
    "chunks": 369
   },
+  "189030": {
+   "name": "winterspring grove/winterspringdirt_s.blp",
+   "zonen": [
+    "1452"
+   ],
+   "_notiz": "Winterquell: Straßen"
+  },
   "189032": {
    "name": "winterspring grove/winterspringfootprints_s.blp",
    "chunks": 28
@@ -172,5 +243,7 @@
    "chunks": 156
   }
  },
- "min_ausdehnung": 5
+ "weich_berg": 2,
+ "weich_min": 0.5,
+ "weich_wasser": 1
 }

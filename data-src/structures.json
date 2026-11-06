@@ -1,0 +1,14 @@
+{
+ "_beschreibung": "Bauwerke, deren begehbare Fläche (echte Modellgeometrie) als Straße/Weg ins Navigationsraster kommt (tools/adt_structs.py). regex auf den Listfile-Namen der WMO/M2-Platzierungen (Kartenobjekte _obj0), 'ausser' schließt aus. Kuratiert aus work/wmo_inventory.json. Keine Instanz-/Höhleneingänge (Sackgassen), keine Häuser.",
+ "build": "1.60.1.70790",
+ "wmo": [
+  {"typ": "bruecke", "regex": "bridge|thandolspan|rockbrodge|snakespinegiantarch", "ausser": "brokenbridge"},
+  {"typ": "tunnel", "regex": "md_dwarven tunnels/|md_cavetunnels/|md_anvilmarpass|plaguewood_tunnel|wallposttunnel", "ausser": "pvp_alterac"},
+  {"typ": "tor", "regex": "greatwall_gate|keepwall/gate0|keepwall/gateruined|durotargate|nightelfsouthgate|goblinwallgate|abbeygate|stranglearenagate"},
+  {"typ": "steg", "regex": "docks?[0-9_.a-z]*\\.wmo$|_dock\\.wmo$|boardwalk", "ausser": "wreck"}
+ ],
+ "m2": [
+  {"typ": "bruecke", "regex": "bridge", "ausser": "bridgebrick|lantern"},
+  {"typ": "steg", "regex": "boardwalk|/docks?/|smalldock|anvilmardock|darkshoredock|dockramp|roadplank", "ausser": "pylon|beam|crane"}
+ ]
+}
