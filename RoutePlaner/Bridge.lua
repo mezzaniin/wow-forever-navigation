@@ -144,9 +144,16 @@ local function extGoal()
 end
 
 local function talentPoints(i)
-    if not GetTalentTabInfo then return 0 end
+    -- robust: Ränge der einzelnen Talente aufsummieren (Rückgabeformat von GetTalentTabInfo ist je Client anders)
+    local sum = 0
+    if GetNumTalents and GetTalentInfo then
+        for t = 1, (GetNumTalents(i) or 0) do
+            local _, _, _, _, rank = GetTalentInfo(i, t)
+            sum = sum + (tonumber(rank) or 0)
+        end
+    end
+    if sum > 0 or not GetTalentTabInfo then return sum end
     local r = { GetTalentTabInfo(i) }
-    -- Classic Era: id, name, beschreibung, icon, punkte, … – ältere Clients: name, icon, punkte, …
     local v = (type(r[1]) == "number" and r[5]) or r[3]
     return tonumber(v) or 0
 end
