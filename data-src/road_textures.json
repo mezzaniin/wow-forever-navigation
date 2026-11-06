@@ -1,7 +1,7 @@
 {
  "_beschreibung": "Geländetexturen (ADT MDID, FileDataID -> Tileset-Name aus dem Community-Listfile), die als Straße/Weg/gepflasterter Platz gelten. Kuratiert je Zone aus work/tex_audit.json (tools/tex_audit.py) und Kontrollbildern (tools/tex_view.py) gegen die aufgedeckte Kartengrafik. Je Textur optional \"zonen\" (UiMapIDs; sonst überall) und \"art\" (\"hart\" = Gewicht zählt direkt, Standard; \"weich\" = nur schmale lange Bänder auf freiem Gelände). Nicht aufgenommen: flächige Grund-Erde/Fels/Schnee (auch wenn Wege teilweise darauf liegen: zu viele Fehltreffer an Hängen und Ufern).",
  "build": "1.60.1.70790",
- "_parameter": "lo/hi: Hysterese-Schwellen auf das geglättete Straßengewicht (2,5-yd-Feinraster); glaettung: Gauß-Sigma in Feinpixeln; min_laenge: kürzere Flecken (yd) fallen weg; stichweg: Äste mit freiem Ende bis zu dieser Länge (yd) werden abgeschnitten; luecke: Lücken bis zu dieser Länge (yd) in Laufrichtung werden geschlossen; min_skelett: Mittellinien-Pixel je Zelle; platz: Straßenflächenanteil je Zelle für Plätze; min_zellen/min_ausdehnung: kleinere Straßeninseln (Zellen) fallen weg; gesperrt_max: größte Zahl gesperrter Zellen, die ein Straßenstück als Verbindung öffnen darf. weich_*: nur für Texturen mit art=weich (Linienfilter über weich_laenge/weich_abstand, Mindestgewicht weich_min, nicht näher als weich_wasser/weich_berg Zellen an Wasser/Berg). schwelle/faktor je Textur: Gewicht unter der Schwelle zählt nicht (flächig dünn aufgetragene Texturen).",
+ "_parameter": "lo/hi: Hysterese-Schwellen auf das geglättete Straßengewicht (2,5-yd-Feinraster); glaettung: Gauß-Sigma in Feinpixeln; min_laenge: kürzere Flecken (yd) fallen weg; stichweg: Äste mit freiem Ende bis zu dieser Länge (yd) werden abgeschnitten; luecke: Lücken bis zu dieser Länge (yd) in Laufrichtung werden geschlossen; min_skelett: Mittellinien-Pixel je Zelle; platz: Straßenflächenanteil je Zelle für Plätze; min_zellen/min_ausdehnung: kleinere Straßeninseln (Zellen) fallen weg; gesperrt_max: größte Zahl gesperrter Zellen, die ein Straßenstück als Verbindung öffnen darf. weich_*: nur für Texturen mit art=weich (Linienfilter über weich_laenge/weich_abstand, Mindestgewicht weich_min, nicht näher als weich_wasser/weich_berg Zellen an Wasser/Berg). schwelle/faktor je Textur: Gewicht unter der Schwelle zählt nicht (flächig dünn aufgetragene Texturen). wasserabstand je Textur: in so vielen Zellen Abstand zu Wasser zählt die Textur nicht (Ufer).",
  "lo": 0.12,
  "hi": 0.28,
  "glaettung": 0.8,
@@ -21,6 +21,14 @@
   "186802": {
    "name": "alteracmtns/alteracrockroadbase_s.blp",
    "chunks": 384
+  },
+  "186805": {
+   "name": "alteracmtns/alteracrubblebase_s.blp",
+   "zonen": [
+    "1424"
+   ],
+   "wasserabstand": 2,
+   "_notiz": "Vorgebirge des Hügellands: Abzweig nach Süderstade (sonst Küstengeröll -> nicht nahe Wasser)"
   },
   "186813": {
    "name": "araithihighlands/arathihighlandscityfloor_s.blp",

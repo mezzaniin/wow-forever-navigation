@@ -225,7 +225,18 @@ def extract(nav, store, cfg, zmasks, log):
     h, w = nav['h'], nav['w']
     hard = {fd: t for fd, t in cfg['texturen'].items() if t.get('art', 'hart') == 'hart'}
     soft = {fd: t for fd, t in cfg['texturen'].items() if t.get('art') == 'weich'}
-    H = paint(store, nav, hard, zmasks)
+    plain = {fd: t for fd, t in hard.items() if not (t.get('wasserabstand') or t.get('bergabstand'))}
+    H = paint(store, nav, plain, zmasks)
+    for fd, t in hard.items():
+        if not (t.get('wasserabstand') or t.get('bergabstand')): continue
+        # Textur, die auch Ufer/Hänge säumt (Geröll an der Küste, Schlamm an Bergrändern):
+        # nahe Wasser- bzw. Bergzellen nicht als Straße werten
+        Ht = paint(store, nav, {fd: t}, zmasks)
+        bad = np.zeros(nav['grid'].shape, bool)
+        if t.get('wasserabstand'): bad |= ndi.binary_dilation(nav['grid'] == WASSER, N8, iterations=int(t['wasserabstand']))
+        if t.get('bergabstand'): bad |= ndi.binary_dilation(nav['grid'] == BERG, N8, iterations=int(t['bergabstand']))
+        Ht[np.repeat(np.repeat(bad, K, axis=0), K, axis=1)] = 0
+        H = np.minimum(H + Ht, 1.0); del Ht
     if soft:
         S = paint(store, nav, soft, zmasks)
         Lr = line_response(S, cfg.get('weich_laenge', 40), cfg.get('weich_abstand', 12))
