@@ -125,6 +125,7 @@ local function extState()
     if fac == "Alliance" then bits = 1 elseif fac == "Horde" then bits = 2 end
     if goal then bits = bits + 4 end
     if transit then bits = bits + 8 end
+    if db and db.strassen == false then bits = bits + 16 end   -- Straßen bevorzugen aus (Standard an)
     for i, tp in ipairs(ns.teleports or {}) do
         if i <= 3 and IsPlayerSpell and IsPlayerSpell(tp.spell) then bits = bits + 2 ^ (4 + i) end
     end

@@ -1,0 +1,176 @@
+{
+ "_beschreibung": "Geländetexturen (ADT MDID, FileDataID -> Tileset-Name aus dem Community-Listfile), die als Straße/Weg/gepflasterter Platz gelten. Kuratiert aus work/tex_inventory.json (alle im Forever-Client 1.60.1.70790 auf Karte 0/1 benutzten Texturen). Nicht aufgenommen: Grund-Erde (*dirt*, desolace/tanaris *footprint*: flächig), Gras, Fels, Nordend-Titan-Platten (nur Einzelchunks).",
+ "build": "1.60.1.70790",
+ "min_anteil": 0.3,
+ "glaettung": 0.6,
+ "min_fein": 2,
+ "min_zellen": 6,
+ "_parameter": "min_anteil: geglätteter Straßenanteil je 5-yd-Feinpixel; glaettung: Gauß-Sigma in Feinpixeln; min_fein: Straßen-Feinpixel (von 16) je 20-yd-Zelle; min_zellen: kleinere Straßeninseln werden verworfen; min_ausdehnung: Straßeninseln müssen mindestens so viele Zellen lang sein (Flecken der Straßentextur in Durotar)",
+ "texturen": {
+  "186766": {
+   "name": "aerie peaks/aeriepeaksrockroadbase_s.blp",
+   "chunks": 171
+  },
+  "186802": {
+   "name": "alteracmtns/alteracrockroadbase_s.blp",
+   "chunks": 384
+  },
+  "186813": {
+   "name": "araithihighlands/arathihighlandscityfloor_s.blp",
+   "chunks": 88
+  },
+  "186839": {
+   "name": "ashenvale/ashenvaleroad_s.blp",
+   "chunks": 112
+  },
+  "186883": {
+   "name": "ashzara/ashzararoad_s.blp",
+   "chunks": 109
+  },
+  "186918": {
+   "name": "barrens/barrensroad01_s.blp",
+   "chunks": 749
+  },
+  "186939": {
+   "name": "burningstepps/burningsteppsbrick01_s.blp",
+   "chunks": 472
+  },
+  "186962": {
+   "name": "burningstepps/burningsteppsspireroad01_s.blp",
+   "chunks": 253
+  },
+  "186975": {
+   "name": "darkshore/darkshoreroad_s.blp",
+   "chunks": 302
+  },
+  "187035": {
+   "name": "durotar/durotarroad_s.blp",
+   "chunks": 707
+  },
+  "187046": {
+   "name": "duskwallow marsh/duskwallowbrickfloor_s.blp",
+   "chunks": 2
+  },
+  "187066": {
+   "name": "duskwallow marsh/duskwallowstoneroad_s.blp",
+   "chunks": 237
+  },
+  "187073": {
+   "name": "duskwood/duskwoodcobblestone2_s.blp",
+   "chunks": 55
+  },
+  "187074": {
+   "name": "duskwood/duskwoodcobblestone_s.blp",
+   "chunks": 326
+  },
+  "187100": {
+   "name": "elwynn/elwynncobblestonebase_s.blp",
+   "chunks": 434
+  },
+  "187104": {
+   "name": "elwynn/elwynncobblestonedock_s.blp",
+   "chunks": 38
+  },
+  "187106": {
+   "name": "elwynn/elwynncobblestonedockdirt_s.blp",
+   "chunks": 65
+  },
+  "304640": {
+   "name": "expansion03/gilneas/gn_cobblestonef_s.blp",
+   "chunks": 679
+  },
+  "304663": {
+   "name": "expansion03/gilneas/gn_cobblestoneg_s.blp",
+   "chunks": 52
+  },
+  "304665": {
+   "name": "expansion03/gilneas/gn_cobblestoneh_s.blp",
+   "chunks": 103
+  },
+  "188478": {
+   "name": "felwood/felwoodroad_s.blp",
+   "chunks": 186
+  },
+  "188508": {
+   "name": "feralas/feralasroad_s.blp",
+   "chunks": 325
+  },
+  "188542": {
+   "name": "hyjal/alphahyjalroad_s.blp",
+   "chunks": 298
+  },
+  "188560": {
+   "name": "ironforge/ironforgefootprintsalpha_s.blp",
+   "chunks": 105
+  },
+  "188566": {
+   "name": "ironforge/ironforgerock06road2_s.blp",
+   "chunks": 451
+  },
+  "188584": {
+   "name": "kalidar/kalidardarnroad_s.blp",
+   "chunks": 222
+  },
+  "188598": {
+   "name": "kalidar/kalidarroad_s.blp",
+   "chunks": 572
+  },
+  "188610": {
+   "name": "loch modan/lochmodanbrickroadbase_s.blp",
+   "chunks": 299
+  },
+  "188665": {
+   "name": "mullgore/mullgoreroad01_s.blp",
+   "chunks": 278
+  },
+  "365792": {
+   "name": "orgrimmar/orgrim_road_01_s.blp",
+   "chunks": 8
+  },
+  "188727": {
+   "name": "plaguelandseast/eastplaguedroadbase_s.blp",
+   "chunks": 353
+  },
+  "188763": {
+   "name": "redridge/redridgerockroadbase_s.blp",
+   "chunks": 309
+  },
+  "188796": {
+   "name": "silverpine/silverpineroad_s.blp",
+   "chunks": 365
+  },
+  "188818": {
+   "name": "stranglethorn/stranglethorncobblestoneroad_s.blp",
+   "chunks": 245
+  },
+  "188854": {
+   "name": "swamp of sorrows/swampsorrowsstoneroad07_s.blp",
+   "chunks": 239
+  },
+  "188911": {
+   "name": "the blasted lands/blastedlandsroad_s.blp",
+   "chunks": 123
+  },
+  "188964": {
+   "name": "tirisfall/tirisfallstoneroad01_s.blp",
+   "chunks": 1107
+  },
+  "188982": {
+   "name": "westwood/westfallcobblestonebase_s.blp",
+   "chunks": 221
+  },
+  "189026": {
+   "name": "wetlands/wetlandsroad01_s.blp",
+   "chunks": 369
+  },
+  "189032": {
+   "name": "winterspring grove/winterspringfootprints_s.blp",
+   "chunks": 28
+  },
+  "189071": {
+   "name": "zulgurub/zulgurubroad01_s.blp",
+   "chunks": 156
+  }
+ },
+ "min_ausdehnung": 5
+}

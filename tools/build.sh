@@ -34,5 +34,12 @@ done
 cp "$ROOT"/tools/*.py .
 venv/bin/python render.py > /dev/null
 venv/bin/python build_nav.py
-venv/bin/python bridge_export.py "$ROOT/RoutePlaner"
+venv/bin/python bridge_export.py "$WORK"          # Basis-Raster (ohne Straßen) -> work/NavData.lua
+
+# 6) Straßen aus den ADT-Geländetexturen (wago.tools CASC, product wowf) einbacken
+#    Texturliste: data-src/road_textures.json; ADT-Cache: work/adt (~1,3 GB, einmalig)
+[ -s listfile.csv ] || curl -sfL -o listfile.csv https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile.csv
+venv/bin/python adt_fetch.py --out adt
+venv/bin/python adt_roads.py --navdata NavData.lua --out "$ROOT/RoutePlaner/NavData.lua" --adt adt --listfile listfile.csv \
+  --textures "$ROOT/data-src/road_textures.json" --fine-out roads_fine.npz
 echo "Fertig: $ROOT/RoutePlaner/NavData.lua"

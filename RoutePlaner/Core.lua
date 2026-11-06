@@ -1344,6 +1344,7 @@ local function help()
     print("  |cffffff00/route stufen|r - Stufenbereiche der Zonen auf der Karte ein/aus")
     print("  |cffffff00/route wege [an|aus|löschen]|r - selbst gelaufene Wege (zusätzlich zur Kartenauswertung)")
     print("  |cffffff00/route fenster|r - Schritt-Fenster ein/aus")
+    print("  |cffffff00/route strassen [an|aus]|r - Straßen/Wege/Brücken bevorzugen (Standard an)")
     print("  |cffffff00/route tempo 7|r - Laufgeschwindigkeit (7 = zu Fuß, 14 = Reittier)")
     print("  |cffffff00/route punkte|r - Boote/Portale auflisten")
     print("  |cffffff00/route punkt <key:a|b>|r - Punkt auf deine aktuelle Position korrigieren")
@@ -1383,6 +1384,16 @@ SlashCmdList.ROUTEPLANER = function(input)
     elseif cmd == "fenster" or cmd == "liste" then
         db.hidden = frame:IsShown()
         if db.hidden then frame:Hide() elseif goal then frame:Show(); update() end
+    elseif cmd == "strassen" or cmd == "straßen" or cmd == "strasse" or cmd == "straße" then
+        local sub = rest:lower()
+        if sub == "an" or sub == "ein" then db.strassen = true
+        elseif sub == "aus" then db.strassen = false
+        elseif sub == "" then db.strassen = (db.strassen == false)
+        end
+        if ns.Nav and ns.Nav.setRoads then ns.Nav.setRoads(db.strassen ~= false) end
+        playerNav = nil
+        msg("Straßen bevorzugen: " .. (db.strassen ~= false and "an" or "aus"))
+        safeCall(update)
     elseif cmd == "tempo" then
         local v = tonumber((rest:gsub(",", ".")))
         if v and v > 0 then db.speed = v; msg("Geschwindigkeit: " .. v); update() else msg("Tempo: " .. (db.speed or 7)) end
@@ -1443,6 +1454,7 @@ ev:SetScript("OnEvent", function(_, e, arg)
         cdb.flights = cdb.flights or {}
         db.fix = db.fix or {}
         db.speed = db.speed or 7
+        if ns.Nav and ns.Nav.setRoads then ns.Nav.setRoads(db.strassen ~= false) end
         if db.size then frame:SetSize(db.size[1], db.size[2]) end
         updateLock()
         if db.pos then

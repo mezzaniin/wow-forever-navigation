@@ -4,7 +4,10 @@ local _, ns = ...
 local Nav = {}
 ns.Nav = Nav
 
-local COST = { [97] = nil, [98] = 1, [99] = 6, [100] = 4 }   -- a=gesperrt b=frei c=Berg d=Wasser
+-- a=gesperrt b=frei c=Berg d=Wasser e=Straße/Weg/Brücke (aus den ADT-Geländetexturen, NavData v2)
+local ROAD = 0.6          -- Straßen bevorzugen: reine Straßenumwege bis ~1/0.6 (Zubringer abgezogen meist 30-40 %)
+local COST = { [97] = nil, [98] = 1, [99] = 6, [100] = 4, [101] = ROAD }
+local HMIN = ROAD         -- kleinste Zellkosten -> Heuristik bleibt zulässig (kürzester Weg exakt)
 local SQ2 = math.sqrt(2)
 local decoded = {}
 
@@ -66,33 +69,42 @@ local function snap(g, r, c)
     end
 end
 
--- Sichtlinie: nur über freie Zellen (oder Zellen, die nicht teurer sind als erlaubt)
+-- Sichtlinie: nur über Zellen, die nicht teurer sind als erlaubt; liefert auch die Kosten der Linie
 local function los(g, r1, c1, r2, c2, maxc)
     local dr, dc = math.abs(r2 - r1), math.abs(c2 - c1)
     local sr, sc = r1 < r2 and 1 or -1, c1 < c2 and 1 or -1
     local err = dr - dc
     local r, c = r1, c1
+    local sum = 0
     while true do
         local k = cost(g, r, c)
         if not k or k > maxc then return false end
-        if r == r2 and c == c2 then return true end
+        if r == r2 and c == c2 then return true, sum end
         local e2 = 2 * err
-        if e2 > -dc then err = err - dc; r = r + sr end
-        if e2 < dr then err = err + dr; c = c + sc end
+        local mr, mc = false, false
+        if e2 > -dc then err = err - dc; r = r + sr; mr = true end
+        if e2 < dr then err = err + dr; c = c + sc; mc = true end
+        local k2 = cost(g, r, c)
+        if not k2 then return false end
+        sum = sum + k2 * ((mr and mc) and SQ2 or 1)
     end
 end
 
+-- Glätten: Abkürzung nur, wenn die Sichtlinie nicht teurer ist als der A*-Weg (sonst würde sie
+-- Straßenstücke abschneiden); ohne Straßen (HMIN = 1) wie bisher nur die Sichtlinien-Regel
 local function smooth(g, cells)
     local out = { cells[1] }
     local i = 1
     while i < #cells do
         local a = cells[i]
-        local maxc = math.max(1, cost(g, a[1], a[2]) or 1)
+        -- Sichtlinie nur über Zellen, die nicht teurer sind als die Startzelle (auf der Straße: nur Straße)
+        local maxc = cost(g, a[1], a[2]) or 1
         local best = i + 1
         local limit = math.min(#cells, i + 80)
         for j = i + 2, limit do
             local b = cells[j]
-            if los(g, a[1], a[2], b[1], b[2], maxc) then best = j end
+            local ok, lc = los(g, a[1], a[2], b[1], b[2], maxc)
+            if ok and (HMIN >= 1 or lc <= b[3] - a[3] + 1e-9) then best = j end
         end
         out[#out + 1] = cells[best]
         i = best
@@ -140,7 +152,7 @@ local function astar(cont, ax, ay, bx, by)
     end
     local function h(r, c)
         local dr, dc = math.abs(r - r2), math.abs(c - c2)
-        return (dr + dc) + (SQ2 - 2) * math.min(dr, dc)
+        return ((dr + dc) + (SQ2 - 2) * math.min(dr, dc)) * HMIN
     end
     local n = 0
     while #heap > 0 do
@@ -175,7 +187,7 @@ local function astar(cont, ax, ay, bx, by)
     if not gs[goalId] then return nil end
     local cells, id = {}, goalId
     while id do
-        table.insert(cells, 1, { math.floor((id - 1) / W) + 1, (id - 1) % W + 1 })
+        table.insert(cells, 1, { math.floor((id - 1) / W) + 1, (id - 1) % W + 1, gs[id] })
         id = came[id]
     end
     cells = smooth(g, cells)
@@ -213,6 +225,18 @@ end)
 local function key(cont, ax, ay, bx, by)
     return string.format("%d:%d:%d:%d:%d", cont, math.floor(ax / 30), math.floor(ay / 30), math.floor(bx / 30), math.floor(by / 30))
 end
+
+local function clearAll()
+    for k in pairs(cache) do cache[k] = nil end
+    for i = #jobs, 1, -1 do jobs[i] = nil end
+end
+
+--- Straßen bevorzugen (an: Straße kostet ROAD, aus: wie freies Gelände; Brücken bleiben begehbar)
+function Nav.setRoads(on)
+    local c = on and ROAD or 1
+    if COST[101] ~= c then COST[101] = c; HMIN = on and ROAD or 1; clearAll() end
+end
+function Nav.roads() return COST[101] ~= 1 end
 
 function Nav.has(cont) return ns.nav and ns.nav[cont] ~= nil end
 

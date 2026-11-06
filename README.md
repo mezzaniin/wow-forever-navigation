@@ -38,7 +38,8 @@ Einmalig bei einem Flugmeister die Flugkarte öffnen, damit das Addon deine Flug
 `/route hilfe` zeigt alle Befehle, u. a.:
 `/route stop`, `/route fenster`, `/route suche <text>`, `/route tempo <yd/s>`,
 `/route punkte`, `/route punkt <key>:a|b` (Steg/Portal-Position korrigieren),
-`/route wege [an|aus|löschen]`, `/route stufen`.
+`/route wege [an|aus|löschen]`, `/route stufen`, `/route strassen [an|aus]` (Straßen/Wege/Brücken
+bevorzugen, Standard an; die Webkarte übernimmt die Einstellung über die Pixel-Leiste).
 
 ## Webkarte (Forever-Karte) synchron
 
@@ -65,11 +66,25 @@ erkennen begehbare Flächen, Wasser und gezeichnete Berge, `build_nav.py` baut d
 Raster je Kontinent, `bridge_export.py` verbindet bekannte Pässe/Brücken (Dun Algaz,
 Thandolübergang, Inseln) und exportiert das Raster lauflängenkodiert nach Lua.
 
+**Straßen** (Klasse `e`, NavData-Format v2) stammen aus den echten Geländedaten: `adt_fetch.py` lädt die
+ADT-Kacheln (`_tex0` = Texturebenen + Alphamaps, `_obj0` = Objektplatzierungen) über die CASC-API von
+wago.tools (FileDataIDs aus dem MAID-Chunk der WDT), `adt_roads.py` berechnet je Alphamap-Pixel den
+sichtbaren Anteil der Straßentexturen aus `data-src/road_textures.json` (kuratiert: `*road*`,
+`*cobblestone*`, Pflaster-/Stadtböden; Liste und Schwellen dort), mittelt auf 5 yd, und eine 20-yd-Zelle
+wird Straße, wenn ein durchgehendes Band hindurchläuft. Brücken: WMO/M2-Platzierungen mit `bridge` im
+Namen (Name aus dem Community-Listfile) → gedrehtes Rechteck der Modellbox (Fahrbahnbreite begrenzt) →
+Straßenzellen, auch über Wasser/Schlucht. `roads_preview.py` erzeugt Vergleichsbilder gegen die
+Kartengrafik (`roads.py` = grafische Linienerkennung, nur noch zur Kontrolle).
+
+Kosten in `Nav.lua`: frei 1, Straße 0,6, Wasser 4, Berg 6 (Heuristik × 0,6, damit A* exakt bleibt;
+Glätten kürzt nur ab, wenn die Gerade nicht teurer ist als der gefundene Weg).
+
 Ausgelesene Blizzard-Dateien (Kacheln, Karten) werden **nicht** ins Repo eingecheckt.
 
 ## Grenzen
 
 - Höhlen, Gebäude und nur dünn gezeichnete Hügel kennt das Raster nicht.
-- Straßen werden noch nicht bevorzugt (Erkennung bisher zu unzuverlässig).
+- Straßen nur dort, wo das Gelände eine eigene Straßentextur hat: in Dun Morogh (Schneepfade ohne
+  eigene Textur) und teils Westfall/Loch Modan fehlen Wege; Durotar hat einzelne Straßentextur-Flecken.
 - Koordinaten einiger Stege/Portale sind geschätzt – mit `/route punkt` korrigierbar.
 - Stufenbereiche: Classic-Standardwerte, sofern der Client keine eigenen liefert.
