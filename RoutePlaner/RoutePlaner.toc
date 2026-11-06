@@ -2,7 +2,7 @@
 ## Title: RoutePlaner
 ## Notes: Zeigt den Weg zum Ziel inkl. Boot, Zeppelin, Portal, Tiefenbahn und Flugrouten
 ## Author: mezzanin
-## Version: 0.5.0
+## Version: 0.6.0
 ## SavedVariables: RoutePlanerDB
 ## SavedVariablesPerCharacter: RoutePlanerChar
 ## OptionalDeps: TomTom

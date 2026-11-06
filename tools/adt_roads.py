@@ -329,12 +329,16 @@ def main():
         st = structs.get(str(cont))
         if st:
             extra = np.zeros(g.shape, bool)
+            g0 = g.copy(); used = 0
             for s in st:
-                for r, c in s['zellen']:
-                    if 0 <= r < nav['h'] and 0 <= c < nav['w']:
-                        extra[r, c] = True
-                        if g[r, c] == 0: g[r, c] = WASSER if s.get('wasser') else FREI
-            log(f'    Bauwerke: {len(st)} ({int(extra.sum())} Zellen)')
+                cl = [(r, c) for r, c in s['zellen'] if 0 <= r < nav['h'] and 0 <= c < nav['w']]
+                # Bauwerke ganz in gesperrtem Gebiet (z. B. unzugängliche Gegenden) nicht öffnen
+                if not cl or sum(1 for r, c in cl if g0[r, c] > 0) < 2: continue
+                used += 1
+                for r, c in cl:
+                    extra[r, c] = True
+                    if g[r, c] == 0: g[r, c] = WASSER if s.get('wasser') else FREI
+            log(f'    Bauwerke: {used} von {len(st)} ({int(extra.sum())} Zellen)')
         R = finish(R, g, cfg, log, extra)
         log(f'  Kontinent {cont}: {int(R.sum())} Straßenzellen (davon Berg {int((R & (g == BERG)).sum())}, Wasser {int((R & (g == WASSER)).sum())}, frei {int((R & (g == FREI)).sum())})')
         g[R] = STRASSE

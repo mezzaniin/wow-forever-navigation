@@ -68,13 +68,24 @@ Thandolübergang, Inseln) und exportiert das Raster lauflängenkodiert nach Lua.
 
 **Straßen** (Klasse `e`, NavData-Format v2) stammen aus den echten Geländedaten: `adt_fetch.py` lädt die
 ADT-Kacheln (`_tex0` = Texturebenen + Alphamaps, `_obj0` = Objektplatzierungen) über die CASC-API von
-wago.tools (FileDataIDs aus dem MAID-Chunk der WDT), `adt_roads.py` berechnet je Alphamap-Pixel den
-sichtbaren Anteil der Straßentexturen aus `data-src/road_textures.json` (kuratiert: `*road*`,
-`*cobblestone*`, Pflaster-/Stadtböden; Liste und Schwellen dort), mittelt auf 5 yd, und eine 20-yd-Zelle
-wird Straße, wenn ein durchgehendes Band hindurchläuft. Brücken: WMO/M2-Platzierungen mit `bridge` im
-Namen (Name aus dem Community-Listfile) → gedrehtes Rechteck der Modellbox (Fahrbahnbreite begrenzt) →
-Straßenzellen, auch über Wasser/Schlucht. `roads_preview.py` erzeugt Vergleichsbilder gegen die
-Kartengrafik (`roads.py` = grafische Linienerkennung, nur noch zur Kontrolle).
+wago.tools (FileDataIDs aus dem MAID-Chunk der WDT). `adt_texstore.py` rechnet je Chunk das sichtbare
+Gewicht jeder Textur auf 2 yd aus (Blending wie im aktuellen Client: Alphawerte additiv, Grundebene
+= 1 − Summe). `adt_roads.py` summiert die kuratierten Straßentexturen aus `data-src/road_textures.json`
+(je Textur optional nur in bestimmten Zonen, mit Schwelle, oder „weich“ = nur schmale lange Bänder auf
+freiem Gelände), legt Hysterese-Schwellen an, bildet die **Mittellinie** (Skelett), schneidet Stichwege ab,
+schließt Lücken bis 20 yd in Laufrichtung und markiert jede 20-yd-Zelle, durch die die Mittellinie läuft
+(diagonale Schritte 4-fach verbunden). Straßentextur unter Wasser zählt nur als kurze Furt; über gesperrten
+Zellen nur, wenn sie zwei offene Straßenstücke verbindet.
+
+**Bauwerke** (`adt_structs.py`, Liste `data-src/structures.json`): Brücken, Tunnel, Tore und Stege werden
+aus der echten Modellgeometrie gerastert (WMO-Gruppen bzw. M2-Kollisionsnetz, nur nach oben zeigende,
+kollidierbare Flächen = Fahrbahn/Tunnelsohle; Tore nur der Durchgang am Boden). Sie werden Straßenzellen,
+auch über Wasser, Schluchten und durch Berge (Thandolübergang, Tunnel bei Dun Algaz und zwischen
+Dun Morogh und Loch Modan, Terrorweb-Tunnel, Höhlentunnel in Kalimdor).
+
+Kontrolle: `tex_audit.py`/`tex_view.py` (welche Textur liegt wo), `roads_preview2.py` (Vergleichsbilder je
+Zone gegen die Kartengrafik, Abdeckung/Bestätigung, Flugmeister am Straßennetz). Die grafische
+Linienerkennung (`roads.py`) dient nur noch als Vergleich.
 
 Kosten in `Nav.lua`: frei 1, Straße 0,6, Wasser 4, Berg 6 (Heuristik × 0,6, damit A* exakt bleibt;
 Glätten kürzt nur ab, wenn die Gerade nicht teurer ist als der gefundene Weg).
@@ -84,7 +95,9 @@ Ausgelesene Blizzard-Dateien (Kacheln, Karten) werden **nicht** ins Repo eingech
 ## Grenzen
 
 - Höhlen, Gebäude und nur dünn gezeichnete Hügel kennt das Raster nicht.
-- Straßen nur dort, wo das Gelände eine eigene Straßentextur hat: in Dun Morogh (Schneepfade ohne
-  eigene Textur) und teils Westfall/Loch Modan fehlen Wege; Durotar hat einzelne Straßentextur-Flecken.
+- Straßen nur dort, wo das Gelände eine erkennbare Straßentextur hat. Reine Erdwege, die dieselbe
+  Textur wie die Umgebung nutzen (Nebenwege im Wald von Elwynn, Weg nach Süderstade, Hinterland,
+  Ödland teilweise), sowie die gestrichelten Pfade in Tausend Nadeln, Tanaris, Steinkrallengebirge,
+  Silithus und Un'Goro sind nicht als Straße erfasst.
 - Koordinaten einiger Stege/Portale sind geschätzt – mit `/route punkt` korrigierbar.
 - Stufenbereiche: Classic-Standardwerte, sofern der Client keine eigenen liefert.
