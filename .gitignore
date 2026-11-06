@@ -1,0 +1,8 @@
+# erzeugte/geschützte Daten (lassen sich mit tools/build.sh neu erzeugen)
+work/
+*.png
+*.blp
+*.npy
+listfile.csv
+venv/
+__pycache__/

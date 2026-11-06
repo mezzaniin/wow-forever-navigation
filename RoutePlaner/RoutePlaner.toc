@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: RoutePlaner
+## Notes: Zeigt den Weg zum Ziel inkl. Boot, Zeppelin, Portal, Tiefenbahn und Flugrouten
+## Author: mezzanin
+## Version: 0.3.0
+## SavedVariables: RoutePlanerDB
+## SavedVariablesPerCharacter: RoutePlanerChar
+## OptionalDeps: TomTom
+
+Data.lua
+NavData.lua
+Nav.lua
+Core.lua
