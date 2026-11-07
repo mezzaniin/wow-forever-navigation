@@ -46,4 +46,22 @@ venv/bin/python adt_structs.py --navdata NavData.lua --adt adt --listfile listfi
   --config "$ROOT/data-src/structures.json" --out structs.json    # Brücken/Tunnel/Tore/Stege aus Modellgeometrie
 venv/bin/python adt_roads.py --navdata NavData.lua --out "$ROOT/RoutePlaner/NavData.lua" --adt adt \
   --db2 . --maps maps --tiles out/tiles --textures "$ROOT/data-src/road_textures.json" --structs structs.json --fine-out roads_fine.npz
+
+# 7) optional: Gelände aus dem Navmesh (TrinityCore mmaps, tools/navmesh_build.sh auf dem PC -> work/navmesh/)
+#    + NPC-Patrouillen als Straßenbelege (work/npc_paths*.json aus wowmap scripts/navmesh_npc_paths.py,
+#    navmesh_cmangos_paths.py; work/spawns.json). Ohne diese Dateien bleibt das Kartenbild-Gelände.
+if [ -s navmesh/navmesh_0.npz ] && [ -s navmesh/navmesh_1.npz ] && [ -s spawns.json ]; then
+  cp NavData.lua NavData.base.lua
+  mv "$ROOT/RoutePlaner/NavData.lua" NavData.v3.lua
+  venv/bin/python navmesh_fuse.py terrain --navdata NavData.base.lua --navmesh navmesh --spawns spawns.json \
+    --db2 . --maps maps --tiles out/tiles --out NavData.nm.lua
+  venv/bin/python navmesh_fuse.py roads --terrain NavData.nm.lua --roads NavData.v3.lua --navmesh navmesh \
+    --structs structs.json --out NavData.nmroads.lua
+  P=$(ls npc_paths*.json 2>/dev/null || true)
+  if [ -n "$P" ]; then
+    venv/bin/python navmesh_fuse.py npcroads --navdata NavData.nmroads.lua --navmesh navmesh --paths $P --out "$ROOT/RoutePlaner/NavData.lua"
+  else
+    cp NavData.nmroads.lua "$ROOT/RoutePlaner/NavData.lua"
+  fi
+fi
 echo "Fertig: $ROOT/RoutePlaner/NavData.lua"

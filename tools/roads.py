@@ -81,7 +81,8 @@ def comp_rows(g):
 
 def write_navdata(path, navs, recompute_comp=False):
     out = ['local _, ns = ...',
-           '-- automatisch erzeugt aus den Weltkarten (Gelände) und ADT-Geländetexturen (Straßen, tools/adt_roads.py): a=gesperrt b=frei c=Berg d=Wasser e=Straße/Weg/Brücke;',
+           '-- automatisch erzeugt: Gelände aus dem Forever-Navmesh (TrinityCore mmaps, tools/navmesh_fuse.py) bzw. den Weltkarten, Straßen aus ADT-Geländetexturen (tools/adt_roads.py) + NPC-Patrouillen;',
+           '-- a=gesperrt b=frei c=Berg d=Wasser e=Straße/Weg/Brücke;',
            '-- comp = zusammenhängende Bereiche. Format-Version 2 (v = 2): Klasse e neu, ältere Nav.lua kennen sie nicht.',
            'ns.navVersion = 2',
            'ns.nav = {}']
