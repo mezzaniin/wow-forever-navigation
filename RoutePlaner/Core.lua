@@ -1096,7 +1096,13 @@ local function searchNPCs(q, out, pos)
             local en = d[1]
             local loc = en
             if L then local okL, t = pcall(L, en); if okL and type(t) == "string" then loc = t end end
-            if en and (loc:lower():find(q, 1, true) or en:lower():find(q, 1, true)) and type(d[4]) == "table" then
+            local alias = en and ns.dungeonNamesDE and (ns.dungeonNamesDE[en] or ns.dungeonNamesDE["The " .. en] or ns.dungeonNamesDE[(en:gsub("^The ", ""))])
+            local hit = en and (loc:lower():find(q, 1, true) or en:lower():find(q, 1, true))
+            if alias then
+                for _, a in ipairs(alias) do if a:lower():find(q, 1, true) then hit = true end end
+                if alias[1] ~= loc then loc = alias[1] .. " (" .. loc .. ")" end
+            end
+            if hit and type(d[4]) == "table" then
                 local spawns = {}
                 for _, e in ipairs(d[4]) do
                     spawns[e[1]] = spawns[e[1]] or {}
