@@ -61,11 +61,22 @@ local function landOf(mapID, x, y, cont)
     return "c" .. tostring(cont)
 end
 
+-- Forever/neuer Client: Positions-/Richtungswerte können "secret values" sein (z. B. im Kampf/in Instanzen).
+-- Mit solchen Werten darf ein Addon nicht rechnen/vergleichen -> als "keine Position" behandeln.
+local function plain(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(v) == "number" and not pcall(function() return v < math.huge end) then return nil end
+    return v
+end
+ns.plain = plain
+
 -- x, y in 0-1
 local function makeNode(mapID, x, y, label)
+    mapID, x, y = plain(mapID), plain(x), plain(y)
     if not mapID or not x or not y then return end
     local cont, wp = C_Map.GetWorldPosFromMapPos(mapID, CreateVector2D(x, y))
-    if not cont or not wp then return end
+    if not cont or not wp or not plain(wp.x) or not plain(wp.y) then return end
     local land
     if ns.Nav and ns.Nav.has(cont) then
         local comp = ns.Nav.comp(cont, wp.x, wp.y)
@@ -104,14 +115,29 @@ end
 ---------------------------------------------------------------------------
 -- Gelernte Wege (selbst abgelaufen = begehbar)
 ---------------------------------------------------------------------------
+-- Format (RoutePlanerDB.roads, wird vom Begleitprogramm an die Webkarte geschickt):
+--   pts = { {cont, wx, wy, land}, ... }   adj = { [i] = {j, ...} }  (Verbindungen in beide Richtungen)
+-- Planer: Wegpunkte = Knoten (Laufen ohne Umwegfaktor); Raster (Nav.lua): gelaufene Zellen begehbar
+-- und bevorzugt. Webkarte (src/planner.js, src/nav.js) rechnet identisch.
 local roads
 local roadNodes, grid = {}, {}
+local roadsReady = false
 local CELL, SNAP, STEP = 40, 12, 20
+local MAX_PTS = 30000   -- Obergrenze der gespeicherten Wegpunkte (~1,5 MB SavedVariables)
 
 local function cellKey(c, cx, cy) return c .. ":" .. cx .. ":" .. cy end
 
+-- Landmasse wie makeNode (zusammenhängender Rasterbereich); ältere Einträge ("c0") werden so aktualisiert
+local function roadLand(p)
+    if ns.Nav and ns.Nav.has(p[1]) then
+        local comp = ns.Nav.comp(p[1], p[2], p[3])
+        if comp then return "n" .. p[1] .. ":" .. comp end
+    end
+    return p[4]
+end
+
 local function addRoadNode(i, p)
-    roadNodes[i] = { cont = p[1], wx = p[2], wy = p[3], land = p[4], label = "Weg", road = i, id = "r" }
+    roadNodes[i] = { cont = p[1], wx = p[2], wy = p[3], land = roadLand(p), label = "Weg", road = i, id = "r" }
     local k = cellKey(p[1], math.floor(p[2] / CELL), math.floor(p[3] / CELL))
     grid[k] = grid[k] or {}
     table.insert(grid[k], i)
@@ -120,13 +146,23 @@ end
 local function initRoads()
     db.roads = db.roads or { pts = {}, adj = {} }
     roads = db.roads
+    roads.adj = roads.adj or {}
     wipe(roadNodes); wipe(grid)
+    roadsReady = false
+    if ns.Nav and ns.Nav.setLearned then ns.Nav.setLearned(roads) end
+end
+
+-- Knoten erst bei Bedarf aufbauen (Raster wird dabei dekodiert)
+local function ensureRoads()
+    if roadsReady or not roads then return end
+    roadsReady = true
     for i, p in ipairs(roads.pts) do addRoadNode(i, p) end
 end
 
 local function nearRoads(n, radius)
     local out = {}
     if not roads then return out end
+    ensureRoads()
     local r = math.ceil(radius / CELL)
     local cx, cy = math.floor(n.wx / CELL), math.floor(n.wy / CELL)
     for dx = -r, r do
@@ -153,15 +189,21 @@ local function linkRoad(a, b)
     for _, x in ipairs(roads.adj[a]) do if x == b then return end end
     table.insert(roads.adj[a], b)
     table.insert(roads.adj[b], a)
+    local p, q = roads.pts[a], roads.pts[b]
+    if ns.Nav and ns.Nav.learnSegment and p and q and p[1] == q[1] then ns.Nav.learnSegment(p[1], p[2], p[3], q[2], q[3]) end
 end
 
-local lastRec
+-- nur echte Fußwege (auch Reittier/Schwimmen) aufzeichnen: kein Flug, kein Transportmittel,
+-- kein Geist (läuft übers Wasser), keine Instanz
+local lastRec, capWarned
 local function recordStep()
     if not roads or db.record == false then return end
-    if UnitOnTaxi("player") or (IsFlying and IsFlying()) or (IsSwimming and IsSwimming()) or transit then
+    ensureRoads()
+    if plain(UnitOnTaxi("player")) or (IsFlying and plain(IsFlying())) or transit
+        or (UnitIsGhost and plain(UnitIsGhost("player"))) or (IsInInstance and plain(IsInInstance())) then
         lastRec = nil; return
     end
-    if (GetUnitSpeed("player") or 0) <= 0 then return end
+    if (plain(GetUnitSpeed("player")) or 0) <= 0 then return end
     local pos = playerNode()
     if not pos then lastRec = nil; return end
     if lastRec and (lastRec.node.cont ~= pos.cont or dist(lastRec.node, pos) > 60) then lastRec = nil end
@@ -176,6 +218,10 @@ local function recordStep()
         return
     end
     if lastRec and dist(lastRec.node, pos) < STEP then return end
+    if #roads.pts >= MAX_PTS then
+        if not capWarned then capWarned = true; msg("Gelernte Wege: Obergrenze erreicht (" .. MAX_PTS .. " Punkte), keine neuen Punkte. /route wege löschen setzt zurück.") end
+        lastRec = nil; return
+    end
     local i = #roads.pts + 1
     roads.pts[i] = { pos.cont, pos.wx, pos.wy, pos.land }
     addRoadNode(i, roads.pts[i])
@@ -198,6 +244,7 @@ local OFFROAD_PENALTY = 1.6   -- Schätzung bis der Rasterweg berechnet ist
 
 local function plan(start, target)
     local speed = db.speed or 7
+    ensureRoads()
     -- id: stabile Kennung je Knoten (für den Routen-Hash der Webkarte, siehe Bridge.lua)
     start.id, target.id = start.id or "start", "goal"
     local keys, kadj = { start, target }, { {}, {} }
@@ -779,7 +826,7 @@ local function mmUpdate()
             or MM_OUTDOOR[Minimap:GetZoom()] or 200
         local half = Minimap:GetWidth() / 2
         local px = half / radius
-        local rot = GetCVar("rotateMinimap") == "1" and GetPlayerFacing and GetPlayerFacing()
+        local rot = GetCVar("rotateMinimap") == "1" and GetPlayerFacing and plain(GetPlayerFacing())
         local cs, sn = 1, 0
         if rot then cs, sn = math.cos(-rot), math.sin(-rot) end
         -- Weltkoordinaten: x = Norden, y = Westen
@@ -1002,31 +1049,101 @@ local function goalFromUserWaypoint()
 end
 
 ---------------------------------------------------------------------------
--- Suche auf der Weltkarte
+-- Suche auf der Weltkarte: Deutsch UND Englisch für alles (Gebiete, Flugpunkte, Stege/Portale,
+-- Dungeons, Quests, NPCs inkl. Titel, Objekte, Gegenstände). Groß/klein, Akzente und Umlaute egal
+-- (ä = ae = a, ß = ss), Wortteile in beliebiger Reihenfolge. Questie-Namen kommen aus einem
+-- einmalig über mehrere Frames aufgebauten Index normalisierter Namen (deutsch + englisch).
 ---------------------------------------------------------------------------
 local function mapName(m)
     local i = m and C_Map.GetMapInfo(m)
     return i and i.name or "?"
 end
 
-local function searchPlaces(q, out)
+local FOLD = {
+    ["ä"] = "a", ["Ä"] = "a", ["ö"] = "o", ["Ö"] = "o", ["ü"] = "u", ["Ü"] = "u", ["ß"] = "ss", ["ẞ"] = "ss",
+    ["à"] = "a", ["á"] = "a", ["â"] = "a", ["ã"] = "a", ["å"] = "a", ["À"] = "a", ["Á"] = "a", ["Â"] = "a", ["Å"] = "a",
+    ["è"] = "e", ["é"] = "e", ["ê"] = "e", ["ë"] = "e", ["È"] = "e", ["É"] = "e", ["Ê"] = "e",
+    ["ì"] = "i", ["í"] = "i", ["î"] = "i", ["ï"] = "i", ["Í"] = "i",
+    ["ò"] = "o", ["ó"] = "o", ["ô"] = "o", ["õ"] = "o", ["ø"] = "o", ["Ó"] = "o", ["Ô"] = "o",
+    ["ù"] = "u", ["ú"] = "u", ["û"] = "u", ["Ú"] = "u", ["ñ"] = "n", ["ç"] = "c",
+    ["æ"] = "ae", ["Æ"] = "ae", ["œ"] = "oe", ["Œ"] = "oe",
+    ["’"] = "'", ["‘"] = "'", ["´"] = "'", ["‚"] = " ", ["„"] = " ", ["“"] = " ", ["”"] = " ", ["–"] = " ", ["—"] = " ",
+}
+
+-- Normalform für den Vergleich (gleiche Regeln in der Webkarte, src/main.js norm)
+local function norm(s)
+    if type(s) ~= "string" or s == "" then return "" end
+    s = s:lower():gsub("[\192-\255][\128-\191]*", FOLD)
+    s = s:gsub("[`']", ""):gsub("%p", " ")
+    s = s:gsub("ae", "a"):gsub("oe", "o"):gsub("ue", "u")
+    s = s:gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    return s
+end
+ns.norm = norm
+
+local function words(qn)
+    local w = {}
+    for x in qn:gmatch("%S+") do w[#w + 1] = x end
+    return w
+end
+
+local function hasAll(s, ws)
+    if s == "" then return false end
+    for i = 1, #ws do
+        if not s:find(ws[i], 1, true) then return false end
+    end
+    return true
+end
+
+-- 0 = genau, 1 = Anfang, 2 = Wortanfang, 3 = irgendwo (kleiner = besser)
+local function score(a, b, qn, ws)
+    if a == qn or b == qn then return 0 end
+    if a:sub(1, #qn) == qn or (b ~= "" and b:sub(1, #qn) == qn) then return 1 end
+    local w1 = " " .. ws[1]
+    if (" " .. a):find(w1, 1, true) or (b ~= "" and (" " .. b):find(w1, 1, true)) then return 2 end
+    return 3
+end
+
+-- Treffer prüfen: deutscher (Client-)Name a, englischer Name b; liefert score, englischerTreffer
+local function match(loc, en, qn, ws)
+    local a, b = norm(loc), norm(en)
+    if b == a then b = "" end
+    if hasAll(a, ws) then return score(a, "", qn, ws), false end
+    if hasAll(a .. "\1" .. b, ws) then return score(a, b, qn, ws), true end
+end
+
+local function greyEN(en) return en and en ~= "" and (" |cff9d9d9d(" .. en .. ")|r") or "" end
+
+local KIND_DE = { boat = "Boot Schiff Steg Hafen", zeppelin = "Zeppelin Zeppelinturm", tram = "Tiefenbahn Bahn", portal = "Portal" }
+local KIND_EN = { boat = "boat ship dock harbor", zeppelin = "zeppelin tower", tram = "deeprun tram", portal = "portal" }
+
+local function searchPlaces(qn, ws, out)
+    local zEN, tEN = ns.zoneNamesEN or {}, ns.taxiNamesEN or {}
+    local seen = {}
     for _, cont in ipairs({ 1414, 1415 }) do
         for _, info in ipairs(C_Map.GetMapChildrenInfo(cont, nil, true) or {}) do
-            if info.name and info.name:lower():find(q, 1, true)
-                and info.mapType and info.mapType >= Enum.UIMapType.Zone then
-                out[#out + 1] = { text = info.name, sub = "Gebiet", mapID = info.mapID, x = 0.5, y = 0.5, prio = 1 }
+            if info.name and not seen[info.mapID] and info.mapType and info.mapType >= Enum.UIMapType.Zone then
+                seen[info.mapID] = true
+                local s, viaEN = match(info.name, zEN[info.mapID], qn, ws)
+                if s then
+                    out[#out + 1] = { text = info.name, en = viaEN and zEN[info.mapID], sub = "Gebiet", mapID = info.mapID,
+                        x = 0.5, y = 0.5, prio = 1, score = s }
+                end
             end
         end
         if C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap then
             local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, cont)
             if ok and nodes then
+                local myF = UnitFactionGroup("player") == "Horde" and 1 or 2
                 for _, n in ipairs(nodes) do
-                    local myF = UnitFactionGroup("player") == "Horde" and 1 or 2
                     local fOk = not n.faction or n.faction == 0 or n.faction == myF
-                    if fOk and n.name and n.position and n.name:lower():find(q, 1, true) then
+                    local en = n.nodeID and tEN[n.nodeID]
+                    local s, viaEN
+                    if fOk and n.name and n.position then s, viaEN = match(n.name .. " Flugpunkt Flugmeister", en and (en .. " flight path flight master"), qn, ws) end
+                    if s then
                         local known = cdb.flights[n.nodeID] ~= nil
-                        out[#out + 1] = { text = n.name, sub = known and "Flugpunkt" or "Flugpunkt - noch nicht entdeckt", mapID = cont,
-                            x = n.position.x, y = n.position.y, prio = 2 }
+                        out[#out + 1] = { text = n.name, en = viaEN and en, sub = known and "Flugpunkt" or "Flugpunkt - noch nicht entdeckt",
+                            mapID = cont, x = n.position.x, y = n.position.y, prio = 2, score = math.max(s, 1) }
                     end
                 end
             end
@@ -1036,8 +1153,11 @@ local function searchPlaces(q, out)
     for _, t in ipairs(ns.transports) do
         for _, side in ipairs((not t.faction or t.faction == faction) and { "a", "b" } or {}) do
             local d = t[side]
-            if d[4]:lower():find(q, 1, true) then
-                out[#out + 1] = { text = d[4], sub = ns.kindText[t.kind], mapID = d[1], x = d[2] / 100, y = d[3] / 100, prio = 2 }
+            local s, viaEN = match(d[4] .. " " .. (KIND_DE[t.kind] or ""),
+                (d[5] or "") .. " " .. (KIND_EN[t.kind] or ""), qn, ws)
+            if s then
+                out[#out + 1] = { text = d[4], en = viaEN and d[5], sub = ns.kindText[t.kind], mapID = d[1], x = d[2] / 100, y = d[3] / 100,
+                    prio = 2, score = s }
             end
         end
     end
@@ -1045,7 +1165,7 @@ end
 
 -- nächster Fundort aus einer Questie-Spawnliste {[areaId] = {{x,y},...}}
 local function nearestSpawn(ZDB, spawns, pos, label)
-    if not spawns then return end
+    if type(spawns) ~= "table" then return end
     local bm, bx, by, bd
     for areaId, list in pairs(spawns) do
         local m = ZDB:GetUiMapIdByAreaId(areaId)
@@ -1056,7 +1176,7 @@ local function nearestSpawn(ZDB, spawns, pos, label)
                     local d = math.huge
                     if pos then
                         local cont, wp = C_Map.GetWorldPosFromMapPos(m, CreateVector2D(x, y))
-                        if cont == pos.cont and wp then
+                        if cont == pos.cont and wp and plain(wp.x) and plain(wp.y) then
                             d = math.sqrt((wp.x - pos.wx) ^ 2 + (wp.y - pos.wy) ^ 2)
                         end
                     end
@@ -1085,9 +1205,134 @@ local function inQuestLog(id)
     end
 end
 
-local function searchNPCs(q, out, pos)
+---------------------------------------------------------------------------
+-- Hintergrund-Aufgaben (Index aufbauen, suchen): je Frame höchstens ~8 ms
+---------------------------------------------------------------------------
+local bgTasks = {}
+local bgFrame = CreateFrame("Frame")
+bgFrame:Hide()
+bgFrame:SetScript("OnUpdate", function(self)
+    local t0 = debugprofilestop()
+    while bgTasks[1] and debugprofilestop() - t0 < 8 do
+        local t = bgTasks[1]
+        local ok, err = coroutine.resume(t.co)
+        if not ok or coroutine.status(t.co) == "dead" then
+            table.remove(bgTasks, 1)
+            if not ok then safeCall(error, err) end
+            if t.done then safeCall(t.done, ok) end
+        end
+    end
+    if not bgTasks[1] then self:Hide() end
+end)
+local function bgRun(fn, done)
+    bgTasks[#bgTasks + 1] = { co = coroutine.create(fn), done = done }
+    bgFrame:Show()
+end
+
+-- Index: je Typ ids[i], key[i] = norm(deutsch) .. "\1" .. norm(englisch) (englisch leer, wenn gleich)
+local IDX = { state = nil, done = 0, total = 1 }
+local LQDB = function() return type(LibQuestieDB) == "table" and LibQuestieDB or nil end
+
+local function idList(entity, pointers)
+    if entity and entity.GetAllIds then
+        local ok, l = pcall(entity.GetAllIds)
+        if ok and type(l) == "table" then return l end
+    end
+    local l = {}
+    for id in pairs(pointers or {}) do l[#l + 1] = id end
+    table.sort(l)
+    return l
+end
+
+-- englischer Grundname (QuestieDB-Rohdaten ohne Übersetzung); im englischen Client überflüssig
+local NEED_EN = not (GetLocale and (GetLocale() == "enUS" or GetLocale() == "enGB"))
+local function rawName(entity, id, key)
+    if not NEED_EN or not entity or not entity.GetRaw then return nil end
+    local ok, v = pcall(entity.GetRaw, id, key or "name")
+    if ok and type(v) == "string" then return v end
+end
+
+local function indexSpecs(QDB)
+    local LQ = LQDB()
+    local function E(n) return LQ and LQ[n] end
+    return {
+        { t = "q", entity = E("Quest"), ids = function() return idList(E("Quest"), QDB.QuestPointers) end,
+          loc = function(id) return QDB.QueryQuestSingle(id, "name") end,
+          en = function(id) return rawName(E("Quest"), id) end },
+        { t = "n", entity = E("Npc"), ids = function() return idList(E("Npc"), QDB.NPCPointers) end,
+          loc = function(id)
+              local n, s = QDB.QueryNPCSingle(id, "name"), QDB.QueryNPCSingle(id, "subName")
+              return (n or "") .. ((type(s) == "string" and s ~= "") and (" " .. s) or "")
+          end,
+          en = function(id)
+              local n, s = rawName(E("Npc"), id), rawName(E("Npc"), id, "subName")
+              return n and (n .. ((s and s ~= "") and (" " .. s) or ""))
+          end },
+        { t = "o", entity = E("Object"), ids = function() return idList(E("Object"), QDB.ObjectPointers) end,
+          loc = function(id) return QDB.QueryObjectSingle and QDB.QueryObjectSingle(id, "name") end,
+          en = function(id) return rawName(E("Object"), id) end },
+        { t = "i", entity = E("Item"), ids = function() return idList(E("Item"), QDB.ItemPointers) end,
+          loc = function(id) return QDB.QueryItemSingle and QDB.QueryItemSingle(id, "name") end,
+          en = function(id) return rawName(E("Item"), id) end },
+    }
+end
+
+local onIndexReady
+local function startIndex()
+    if IDX.state then return end
+    local QDB = questie()
+    if not QDB then IDX.state = "none"; return end
+    IDX.state = "building"
+    bgRun(function()
+        local specs = indexSpecs(QDB)
+        local lists, total = {}, 0
+        for i, sp in ipairs(specs) do lists[i] = sp.ids(); total = total + #lists[i] end
+        IDX.total, IDX.done = math.max(1, total), 0
+        for i, sp in ipairs(specs) do
+            local ids, keys, n = {}, {}, 0
+            for k, id in ipairs(lists[i]) do
+                local ok, loc = pcall(sp.loc, id)
+                local a = norm(ok and loc or nil)
+                local b = norm(sp.en(id))
+                if b == a then b = "" end
+                if a ~= "" or b ~= "" then
+                    n = n + 1; ids[n] = id; keys[n] = a .. "\1" .. b
+                end
+                if k % 150 == 0 then IDX.done = IDX.done + 150; coroutine.yield() end
+            end
+            IDX[sp.t] = { ids = ids, keys = keys, n = n }
+        end
+        IDX.done = IDX.total
+    end, function(ok)
+        IDX.state = ok and "ready" or "none"
+        if onIndexReady then onIndexReady() end
+    end)
+end
+
+local function candidates(ix, qn, ws, serial, cap)
+    local out = {}
+    if not ix then return out end
+    local keys, ids = ix.keys, ix.ids
+    local w1 = ws[1]
+    for i = 1, ix.n do
+        local k = keys[i]
+        if k:find(w1, 1, true) and hasAll(k, ws) then
+            local sep = k:find("\1", 1, true)
+            local a, b = k:sub(1, sep - 1), k:sub(sep + 1)
+            local viaEN = not hasAll(a, ws)
+            out[#out + 1] = { id = ids[i], s = score(a, viaEN and b or "", qn, ws), en = viaEN }
+        end
+        if i % 4000 == 0 then coroutine.yield(); if serial() then return {} end end
+    end
+    table.sort(out, function(x, y) if x.s ~= y.s then return x.s < y.s end return x.id < y.id end)
+    for i = #out, (cap or 300) + 1, -1 do out[i] = nil end
+    return out
+end
+
+local function searchQuestie(qn, ws, out, pos, cancelled)
     local QDB, ZDB, L = questie()
     if not QDB then return end
+    local LQ = LQDB()
 
     -- Dungeons (Eingänge)
     local okD, dungeons = pcall(ZDB.GetDungeons, ZDB)
@@ -1095,121 +1340,200 @@ local function searchNPCs(q, out, pos)
         for _, d in pairs(dungeons) do
             local en = d[1]
             local loc = en
-            if L then local okL, t = pcall(L, en); if okL and type(t) == "string" then loc = t end end
+            if L and en then local okL, t = pcall(L, en); if okL and type(t) == "string" then loc = t end end
             local alias = en and ns.dungeonNamesDE and (ns.dungeonNamesDE[en] or ns.dungeonNamesDE["The " .. en] or ns.dungeonNamesDE[(en:gsub("^The ", ""))])
-            local hit = en and (loc:lower():find(q, 1, true) or en:lower():find(q, 1, true))
-            if alias then
-                for _, a in ipairs(alias) do if a:lower():find(q, 1, true) then hit = true end end
-                if alias[1] ~= loc then loc = alias[1] .. " (" .. loc .. ")" end
-            end
-            if hit and type(d[4]) == "table" then
+            local deAll = (loc or "") .. " " .. (alias and table.concat(alias, " ") or "") .. " Dungeon Instanz"
+            local s, viaEN = match(deAll, en and (en .. " dungeon instance"), qn, ws)
+            if alias and alias[1] ~= loc then loc = alias[1] .. " (" .. loc .. ")" end
+            if s and type(d[4]) == "table" then
                 local spawns = {}
                 for _, e in ipairs(d[4]) do
                     spawns[e[1]] = spawns[e[1]] or {}
                     table.insert(spawns[e[1]], { e[2], e[3] })
                 end
                 local n, dd = nearestSpawn(ZDB, spawns, pos, loc)
-                if n then out[#out + 1] = { text = loc, sub = "Dungeon-Eingang", node = n, d = dd, prio = 2 } end
+                if n then out[#out + 1] = { text = loc, en = viaEN and en, sub = "Dungeon-Eingang", node = n, d = dd, prio = 2, score = s } end
             end
         end
+    end
+    coroutine.yield()
+
+    local function npcSpot(npcId, pos2, label)
+        return nearestSpawn(ZDB, QDB.QueryNPCSingle(npcId, "spawns"), pos2, label)
+    end
+    local function objSpot(objId, pos2, label)
+        return nearestSpawn(ZDB, QDB.QueryObjectSingle and QDB.QueryObjectSingle(objId, "spawns"), pos2, label)
     end
 
     -- Quests: Annahme, Abgabe und (wenn im Questlog) Questziele
-    if QDB.QuestPointers and QDB.QueryQuestSingle then
-        local nq = 0
-        for id in pairs(QDB.QuestPointers) do
-            local name = QDB.QueryQuestSingle(id, "name")
-            if name and name:lower():find(q, 1, true) then
-                nq = nq + 1
-                if nq > 25 then break end
-                local lvl = QDB.QueryQuestSingle(id, "questLevel")
-                local title = name .. (lvl and lvl > 0 and (" [" .. lvl .. "]") or "")
-                local active = inQuestLog(id)
-                local function addFrom(list, role)
-                    if type(list) ~= "table" then return end
-                    for _, npcId in ipairs(list[1] or {}) do
-                        local nn = QDB.QueryNPCSingle(npcId, "name")
-                        local n, dd = nearestSpawn(ZDB, QDB.QueryNPCSingle(npcId, "spawns"), pos, nn or title)
-                        if n then out[#out + 1] = { text = title, sub = role .. ": " .. (nn or "?"), node = n, d = dd, prio = 3 }; return end
-                    end
-                    for _, objId in ipairs(list[2] or {}) do
-                        local on = QDB.QueryObjectSingle and QDB.QueryObjectSingle(objId, "name")
-                        local n, dd = nearestSpawn(ZDB, QDB.QueryObjectSingle and QDB.QueryObjectSingle(objId, "spawns"), pos, on or title)
-                        if n then out[#out + 1] = { text = title, sub = role .. ": " .. (on or "Objekt"), node = n, d = dd, prio = 3 }; return end
-                    end
+    local nq = 0
+    for _, c in ipairs(candidates(IDX.q, qn, ws, cancelled, 60)) do
+        if nq >= 25 or cancelled() then break end
+        local id = c.id
+        local name = QDB.QueryQuestSingle(id, "name") or "?"
+        local en = c.en and rawName(LQ and LQ.Quest, id)
+        nq = nq + 1
+        local lvl = QDB.QueryQuestSingle(id, "questLevel")
+        local title = name .. ((type(lvl) == "number" and lvl > 0) and (" [" .. lvl .. "]") or "")
+        local active = inQuestLog(id)
+        local function add(n, dd, sub) out[#out + 1] = { text = title, en = en, sub = sub, node = n, d = dd, prio = 3, score = c.s } end
+        local function addFrom(list, role)
+            if type(list) ~= "table" then return end
+            for _, npcId in ipairs(list[1] or {}) do
+                local nn = QDB.QueryNPCSingle(npcId, "name")
+                local n, dd = npcSpot(npcId, pos, nn or title)
+                if n then add(n, dd, role .. ": " .. (nn or "?")); return end
+            end
+            for _, objId in ipairs(list[2] or {}) do
+                local on = QDB.QueryObjectSingle and QDB.QueryObjectSingle(objId, "name")
+                local n, dd = objSpot(objId, pos, on or title)
+                if n then add(n, dd, role .. ": " .. (on or "Objekt")); return end
+            end
+        end
+        if not active then addFrom(QDB.QueryQuestSingle(id, "startedBy"), "Annahme") end
+        addFrom(QDB.QueryQuestSingle(id, "finishedBy"), "Abgabe")
+        if active then
+            local obj = QDB.QueryQuestSingle(id, "objectives")
+            if type(obj) == "table" then
+                for _, o in ipairs(obj[1] or {}) do
+                    local nn = QDB.QueryNPCSingle(o[1], "name")
+                    local n, dd = npcSpot(o[1], pos, nn or title)
+                    if n then add(n, dd, "Questziel: " .. (nn or "?")) end
                 end
-                if not active then addFrom(QDB.QueryQuestSingle(id, "startedBy"), "Annahme") end
-                addFrom(QDB.QueryQuestSingle(id, "finishedBy"), "Abgabe")
-                if active then
-                    local obj = QDB.QueryQuestSingle(id, "objectives")
-                    if type(obj) == "table" then
-                        for _, c in ipairs(obj[1] or {}) do
-                            local nn = QDB.QueryNPCSingle(c[1], "name")
-                            local n, dd = nearestSpawn(ZDB, QDB.QueryNPCSingle(c[1], "spawns"), pos, nn or title)
-                            if n then out[#out + 1] = { text = title, sub = "Questziel: " .. (nn or "?"), node = n, d = dd, prio = 3 } end
-                        end
-                        for _, c in ipairs(obj[2] or {}) do
-                            local on = QDB.QueryObjectSingle and QDB.QueryObjectSingle(c[1], "name")
-                            local n, dd = nearestSpawn(ZDB, QDB.QueryObjectSingle and QDB.QueryObjectSingle(c[1], "spawns"), pos, on or title)
-                            if n then out[#out + 1] = { text = title, sub = "Questziel: " .. (on or "Objekt"), node = n, d = dd, prio = 3 } end
-                        end
-                    end
+                for _, o in ipairs(obj[2] or {}) do
+                    local on = QDB.QueryObjectSingle and QDB.QueryObjectSingle(o[1], "name")
+                    local n, dd = objSpot(o[1], pos, on or title)
+                    if n then add(n, dd, "Questziel: " .. (on or "Objekt")) end
                 end
             end
         end
+        if nq % 5 == 0 then coroutine.yield() end
     end
 
-    -- NPCs (Name oder Titel)
-    if QDB.NPCPointers and QDB.QueryNPCSingle then
-        local found = 0
-        for id in pairs(QDB.NPCPointers) do
-            local name = QDB.QueryNPCSingle(id, "name")
-            local sub = QDB.QueryNPCSingle(id, "subName")
-            if (name and name:lower():find(q, 1, true)) or (sub and sub:lower():find(q, 1, true)) then
-                local n, dd = nearestSpawn(ZDB, QDB.QueryNPCSingle(id, "spawns"), pos, name)
-                if n then
-                    out[#out + 1] = { text = name or "?", sub = sub, node = n, d = dd, prio = 4 }
-                    found = found + 1
-                    if found >= 40 then break end
-                end
-            end
+    -- NPCs (Name oder Titel, deutsch oder englisch)
+    local found = 0
+    for k, c in ipairs(candidates(IDX.n, qn, ws, cancelled, 200)) do
+        if found >= 40 or cancelled() then break end
+        local name = QDB.QueryNPCSingle(c.id, "name")
+        local n, dd = npcSpot(c.id, pos, name)
+        if n then
+            local sub = QDB.QueryNPCSingle(c.id, "subName")
+            local en = c.en and rawName(LQ and LQ.Npc, c.id)
+            out[#out + 1] = { text = name or "?", en = en ~= name and en or nil, sub = sub, node = n, d = dd, prio = 4, score = c.s }
+            found = found + 1
         end
+        if k % 10 == 0 then coroutine.yield() end
     end
 
     -- Objekte (Briefkasten, Erzadern, Questobjekte ...)
-    if QDB.ObjectPointers and QDB.QueryObjectSingle then
-        local found = 0
-        for id in pairs(QDB.ObjectPointers) do
-            local name = QDB.QueryObjectSingle(id, "name")
-            if name and name:lower():find(q, 1, true) then
-                local n, dd = nearestSpawn(ZDB, QDB.QueryObjectSingle(id, "spawns"), pos, name)
-                if n then
-                    out[#out + 1] = { text = name, sub = "Objekt", node = n, d = dd, prio = 5 }
-                    found = found + 1
-                    if found >= 20 then break end
-                end
+    found = 0
+    for k, c in ipairs(candidates(IDX.o, qn, ws, cancelled, 120)) do
+        if found >= 20 or cancelled() then break end
+        local name = QDB.QueryObjectSingle(c.id, "name")
+        local n, dd = objSpot(c.id, pos, name)
+        if n then
+            local en = c.en and rawName(LQ and LQ.Object, c.id)
+            out[#out + 1] = { text = name or "?", en = en ~= name and en or nil, sub = "Objekt", node = n, d = dd, prio = 5, score = c.s }
+            found = found + 1
+        end
+        if k % 10 == 0 then coroutine.yield() end
+    end
+
+    -- Gegenstände: nächster Fundort (Beute von NPC/Objekt oder Händler)
+    found = 0
+    if QDB.QueryItemSingle then
+        for k, c in ipairs(candidates(IDX.i, qn, ws, cancelled, 80)) do
+            if found >= 15 or cancelled() then break end
+            local name = QDB.QueryItemSingle(c.id, "name") or "?"
+            local bn, bd, bsub
+            local function try(n, dd, sub)
+                if n and (not bn or (dd or math.huge) < (bd or math.huge)) then bn, bd, bsub = n, dd, sub end
             end
+            for i, npcId in ipairs(QDB.QueryItemSingle(c.id, "npcDrops") or {}) do
+                if i > 25 then break end
+                local nn = QDB.QueryNPCSingle(npcId, "name")
+                local n, dd = npcSpot(npcId, pos, nn or name)
+                try(n, dd, "Beute: " .. (nn or "?"))
+            end
+            for i, objId in ipairs(QDB.QueryItemSingle(c.id, "objectDrops") or {}) do
+                if i > 25 then break end
+                local on = QDB.QueryObjectSingle and QDB.QueryObjectSingle(objId, "name")
+                local n, dd = objSpot(objId, pos, on or name)
+                try(n, dd, "Fundort: " .. (on or "Objekt"))
+            end
+            for i, npcId in ipairs(QDB.QueryItemSingle(c.id, "vendors") or {}) do
+                if i > 25 then break end
+                local nn = QDB.QueryNPCSingle(npcId, "name")
+                local n, dd = npcSpot(npcId, pos, nn or name)
+                try(n, dd, "Händler: " .. (nn or "?"))
+            end
+            if bn then
+                local en = c.en and rawName(LQ and LQ.Item, c.id)
+                out[#out + 1] = { text = name, en = en ~= name and en or nil, sub = "Gegenstand – " .. bsub, node = bn, d = bd, prio = 6, score = c.s }
+                found = found + 1
+            end
+            if k % 3 == 0 then coroutine.yield() end
         end
     end
 end
 
 local search = {}
 
-local function runSearch(text)
-    local q = strtrim(text or ""):lower()
-    local out = {}
-    if #q >= 2 then
-        local pos = playerNode()
-        searchPlaces(q, out)
-        if #q >= 3 then safeCall(searchNPCs, q, out, pos) end
-        table.sort(out, function(a, b)
-            if a.prio ~= b.prio then return a.prio < b.prio end
-            return (a.d or 0) < (b.d or 0)
-        end)
-    end
-    search.results = out
-    search.show(out)
+local function sortResults(out)
+    table.sort(out, function(a, b)
+        if (a.score or 3) ~= (b.score or 3) then return (a.score or 3) < (b.score or 3) end
+        if a.prio ~= b.prio then return a.prio < b.prio end
+        return (a.d or 0) < (b.d or 0)
+    end)
 end
+
+local function runSearch(text)
+    text = strtrim(text or "")
+    search.serial = (search.serial or 0) + 1
+    local serial = search.serial
+    local qn = norm(text)
+    local out = {}
+    search.results = out
+    if #qn < 2 then search.show(out); return end
+    local ws = words(qn)
+    local pos = playerNode()
+    searchPlaces(qn, ws, out)
+    sortResults(out)
+    if #qn < 3 or not questie() then search.show(out); return end
+    if IDX.state ~= "ready" then
+        startIndex()
+        if IDX.state == "building" then
+            search.pending = text
+            search.show(out, string.format("Suchindex wird aufgebaut ... %d %%", math.min(99, math.floor(100 * IDX.done / IDX.total))))
+            return
+        end
+        search.show(out); return
+    end
+    search.show(out, "Suche ...")
+    local function cancelled() return serial ~= search.serial end
+    bgRun(function() searchQuestie(qn, ws, out, pos, cancelled) end, function()
+        if cancelled() then return end
+        sortResults(out)
+        search.results = out
+        search.show(out)
+    end)
+end
+
+-- für Tests (tests/routeplaner/search_test.mjs in der Webkarte)
+ns.search, ns.runSearch = search, function(t) return runSearch(t) end
+
+onIndexReady = function()
+    local p = search.pending
+    search.pending = nil
+    if p and search.box and strtrim(search.box:GetText() or "") == p then safeCall(runSearch, p) end
+end
+
+-- Fortschritt des Index im Ergebnisfenster anzeigen
+C_Timer.NewTicker(0.5, function()
+    if IDX.state == "building" and search.pending and search.show and search.results then
+        search.show(search.results, string.format("Suchindex wird aufgebaut ... %d %%", math.min(99, math.floor(100 * IDX.done / IDX.total))))
+    end
+end)
 
 local function pickResult(r)
     if not r then return end
@@ -1231,7 +1555,7 @@ function buildSearchUI()
     box:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, -10)
     box:SetFrameLevel(parent:GetFrameLevel() + 2500)
     box:SetAutoFocus(false)
-    if box.Instructions then box.Instructions:SetText("Ort, Dungeon, Quest, NPC ...") end
+    if box.Instructions then box.Instructions:SetText("Ort, Dungeon, Quest, NPC, Gegenstand ... (de/en)") end
 
     local list = CreateFrame("Frame", nil, box, "BackdropTemplate")
     list:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, -2)
@@ -1247,7 +1571,7 @@ function buildSearchUI()
     list.buttons = {}
 
     search.box, search.list = box, list
-    search.show = function(out)
+    search.show = function(out, status)
         local shown = math.min(#out, 20)
         for i = 1, shown do
             local b = list.buttons[i]
@@ -1267,23 +1591,31 @@ function buildSearchUI()
             local extra = r.sub and r.sub ~= "" and (" |cffaaaaaa<" .. r.sub .. ">|r") or ""
             local where = (r.prio == 1) and "" or (" |cff888888- " .. zone .. "|r")
             if r.d and r.d < math.huge then where = where .. string.format(" |cff888888(%d m)|r", math.floor(r.d)) end
-            b.text:SetText(r.text .. extra .. where)
+            b.text:SetText(r.text .. greyEN(r.en) .. extra .. where)
             b.result = r
             b:Show()
         end
         for i = shown + 1, #list.buttons do list.buttons[i]:Hide() end
+        if not list.empty then
+            list.empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            list.empty:SetJustifyH("LEFT")
+        end
+        list.empty:ClearAllPoints()
         if shown == 0 then
             list:SetShown(#strtrim(box:GetText() or "") >= 2)
             list:SetHeight(30)
-            if not list.empty then
-                list.empty = list:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-                list.empty:SetPoint("TOPLEFT", 10, -9)
-                list.empty:SetText("Keine Treffer")
-            end
+            list.empty:SetPoint("TOPLEFT", 10, -9)
+            list.empty:SetText(status or "Keine Treffer")
             list.empty:Show()
         else
-            if list.empty then list.empty:Hide() end
-            list:SetHeight(shown * 18 + 12)
+            local extraH = 0
+            if status then
+                list.empty:SetPoint("TOPLEFT", 10, -9 - shown * 18)
+                list.empty:SetText(status); list.empty:Show(); extraH = 16
+            else
+                list.empty:Hide()
+            end
+            list:SetHeight(shown * 18 + 12 + extraH)
             list:Show()
         end
     end
@@ -1298,6 +1630,8 @@ function buildSearchUI()
         if search.results and search.results[1] then pickResult(search.results[1]) end
     end)
     box:HookScript("OnEscapePressed", function(self) self:ClearFocus(); list:Hide() end)
+    -- Suchindex schon beim Anklicken im Hintergrund aufbauen
+    box:HookScript("OnEditFocusGained", function() if not IDX.state then safeCall(startIndex) end end)
     WorldMapFrame:HookScript("OnHide", function() box:ClearFocus(); list:Hide() end)
 end
 
@@ -1325,14 +1659,18 @@ end
 -- Slash-Befehle
 ---------------------------------------------------------------------------
 local function findZone(name)
-    name = name:lower()
+    name = norm(name)
     local found
+    local zEN = ns.zoneNamesEN or {}
     for _, cont in ipairs({ 1414, 1415 }) do
         local kids = C_Map.GetMapChildrenInfo(cont, nil, true) or {}
         for _, info in ipairs(kids) do
-            local n = info.name:lower()
-            if n == name then return info.mapID end
-            if not found and n:sub(1, #name) == name then found = info.mapID end
+            for _, n in ipairs({ norm(info.name), norm(zEN[info.mapID]) }) do
+                if n ~= "" then
+                    if n == name then return info.mapID end
+                    if not found and n:sub(1, #name) == name then found = info.mapID end
+                end
+            end
         end
     end
     return found
@@ -1379,7 +1717,10 @@ SlashCmdList.ROUTEPLANER = function(input)
         elseif sub == "löschen" or sub == "loeschen" then
             db.roads = { pts = {}, adj = {} }; initRoads(); msg("Gelernte Wege gelöscht.")
         else
-            msg(string.format("%d Wegpunkte gelernt, Aufzeichnung %s.", #roads.pts, db.record == false and "aus" or "an"))
+            ensureRoads()
+            local cells = 0
+            if ns.Nav and ns.Nav.learnedCells then cells = ns.Nav.learnedCells(0) + ns.Nav.learnedCells(1) end
+            msg(string.format("%d Wegpunkte gelernt (%d Rasterzellen begehbar), Aufzeichnung %s. Webkarte: nach /reload.", #roads.pts, cells, db.record == false and "aus" or "an"))
         end
     elseif cmd == "stufen" then
         db.levels = (db.levels == false)

@@ -8,6 +8,11 @@ ns.Nav = Nav
 local ROAD = 0.6          -- Straßen bevorzugen: reine Straßenumwege bis ~1/0.6 (Zubringer abgezogen meist 30-40 %)
 local COST = { [97] = nil, [98] = 1, [99] = 6, [100] = 4, [101] = ROAD }
 local HMIN = ROAD         -- kleinste Zellkosten -> Heuristik bleibt zulässig (kürzester Weg exakt)
+-- Gelernte Wege: selbst gelaufene Zellen sind begehbar (auch wo das Raster gesperrt/Berg/Wasser sagt)
+-- und stark bevorzugt. Gleiche Regeln in der Webkarte (src/nav.js), Daten via Begleitprogramm.
+local LEARN = 0.4
+local LEARN_SEG = 80     -- längere Sprünge zwischen zwei Wegpunkten nicht rastern (Teleport, Ladebildschirm)
+local LEARN_MAX = 200000 -- Zellen je Kontinent
 local SQ2 = math.sqrt(2)
 local decoded = {}
 
@@ -24,6 +29,7 @@ local function grid(cont)
     end
     g = { rows = rows, w = d.w, h = d.h, xmax = d.xmax, ymax = d.ymax, cell = d.cell }
     decoded[cont] = g
+    Nav.applyLearned(cont)
     return g
 end
 
@@ -45,6 +51,14 @@ end
 
 local function cost(g, r, c)
     if r < 1 or c < 1 or r > g.h or c > g.w then return nil end
+    local L = g.learned
+    if L and L[(r - 1) * g.w + c] then return LEARN end
+    return COST[g.rows[r]:byte(c)]
+end
+
+-- Rasterklasse ohne gelernte Wege (für zusammenhängende Bereiche)
+local function staticCost(g, r, c)
+    if r < 1 or c < 1 or r > g.h or c > g.w then return nil end
     return COST[g.rows[r]:byte(c)]
 end
 
@@ -56,18 +70,22 @@ local function toWorld(g, r, c)
     return g.xmax - (r - 0.5) * g.cell, g.ymax - (c - 0.5) * g.cell
 end
 
-local function snap(g, r, c)
-    if cost(g, r, c) then return r, c end
+local function snap(g, r, c, fn)
+    fn = fn or cost
+    if fn(g, r, c) then return r, c end
     for rad = 1, 10 do
         for dr = -rad, rad do
             for dc = -rad, rad do
                 if math.abs(dr) == rad or math.abs(dc) == rad then
-                    if cost(g, r + dr, c + dc) then return r + dr, c + dc end
+                    if fn(g, r + dr, c + dc) then return r + dr, c + dc end
                 end
             end
         end
     end
 end
+
+-- kleinste Zellkosten dieses Rasters (Heuristik/Glätten)
+local function hmin(g) return g.learned and math.min(LEARN, HMIN) or HMIN end
 
 -- Sichtlinie: nur über Zellen, die nicht teurer sind als erlaubt; liefert auch die Kosten der Linie
 local function los(g, r1, c1, r2, c2, maxc)
@@ -93,6 +111,7 @@ end
 -- Glätten: Abkürzung nur, wenn die Sichtlinie nicht teurer ist als der A*-Weg (sonst würde sie
 -- Straßenstücke abschneiden); ohne Straßen (HMIN = 1) wie bisher nur die Sichtlinien-Regel
 local function smooth(g, cells)
+    local HM = hmin(g)
     local out = { cells[1] }
     local i = 1
     while i < #cells do
@@ -104,7 +123,7 @@ local function smooth(g, cells)
         for j = i + 2, limit do
             local b = cells[j]
             local ok, lc = los(g, a[1], a[2], b[1], b[2], maxc)
-            if ok and (HMIN >= 1 or lc <= b[3] - a[3] + 1e-9) then best = j end
+            if ok and (HM >= 1 or lc <= b[3] - a[3] + 1e-9) then best = j end
         end
         out[#out + 1] = cells[best]
         i = best
@@ -150,9 +169,10 @@ local function astar(cont, ax, ay, bx, by)
         end
         return top
     end
+    local HM = hmin(g)
     local function h(r, c)
         local dr, dc = math.abs(r - r2), math.abs(c - c2)
-        return ((dr + dc) + (SQ2 - 2) * math.min(dr, dc)) * HMIN
+        return ((dr + dc) + (SQ2 - 2) * math.min(dr, dc)) * HM
     end
     local n = 0
     while #heap > 0 do
@@ -240,6 +260,78 @@ function Nav.roads() return COST[101] ~= 1 end
 
 function Nav.has(cont) return ns.nav and ns.nav[cont] ~= nil end
 
+---------------------------------------------------------------------------
+-- Gelernte Wege ins Raster (Linie zwischen zwei verbundenen Wegpunkten, Bresenham)
+---------------------------------------------------------------------------
+local learnedSrc   -- { pts = {{cont, wx, wy, land}, ...}, adj = {[i] = {j, ...}} } (RoutePlanerDB.roads)
+
+local function markLine(g, ax, ay, bx, by)
+    local L = g.learned
+    if not L then L = { n = 0 }; g.learned = L end
+    local r1, c1 = toCell(g, ax, ay)
+    local r2, c2 = toCell(g, bx, by)
+    local dx, dy = ax - bx, ay - by
+    if dx * dx + dy * dy > LEARN_SEG * LEARN_SEG then r2, c2 = r1, c1 end
+    local dr, dc = math.abs(r2 - r1), math.abs(c2 - c1)
+    local sr, sc = r1 < r2 and 1 or -1, c1 < c2 and 1 or -1
+    local err = dr - dc
+    local r, c = r1, c1
+    while true do
+        if r >= 1 and c >= 1 and r <= g.h and c <= g.w and L.n < LEARN_MAX then
+            local id = (r - 1) * g.w + c
+            if not L[id] then L[id] = true; L.n = L.n + 1 end
+        end
+        if r == r2 and c == c2 then break end
+        local e2 = 2 * err
+        local mr, mc = false, false
+        if e2 > -dc then err = err - dc; r = r + sr; mr = true end
+        if e2 < dr then err = err + dr; c = c + sc; mc = true end
+        -- diagonale Schritte 4-verbunden machen (A* verbietet Eckenschneiden)
+        if mr and mc and r >= 1 and c - sc >= 1 and r <= g.h and c - sc <= g.w and L.n < LEARN_MAX then
+            local id = (r - 1) * g.w + (c - sc)
+            if not L[id] then L[id] = true; L.n = L.n + 1 end
+        end
+    end
+end
+
+-- alle gelernten Wege eines Kontinents ins (bereits dekodierte) Raster übernehmen
+function Nav.applyLearned(cont)
+    local g = decoded[cont]
+    if not g then return end
+    g.learned = nil
+    local src = learnedSrc
+    if not src or not src.pts then return end
+    local pts, adj = src.pts, src.adj or {}
+    for i, p in ipairs(pts) do
+        if p[1] == cont then
+            markLine(g, p[2], p[3], p[2], p[3])
+            for _, j in ipairs(adj[i] or {}) do
+                local q = pts[j]
+                if j > i and q and q[1] == cont then markLine(g, p[2], p[3], q[2], q[3]) end
+            end
+        end
+    end
+end
+
+--- Gelernte Wege setzen (RoutePlanerDB.roads); Raster werden beim Dekodieren bzw. sofort aktualisiert
+function Nav.setLearned(src)
+    learnedSrc = src
+    for cont in pairs(decoded) do Nav.applyLearned(cont) end
+    clearAll()
+end
+
+--- neuer gelernter Abschnitt während des Spielens (wirkt auf neue Berechnungen, Cache bleibt)
+function Nav.learnSegment(cont, ax, ay, bx, by)
+    local g = decoded[cont]
+    if g then markLine(g, ax, ay, bx, by) end
+end
+
+--- Anzahl gelernter Rasterzellen (für /route wege)
+function Nav.learnedCells(cont)
+    local g = grid(cont)
+    return g and g.learned and g.learned.n or 0
+end
+
 -- liefert pts (Liste {wx,wy}) | nil, status
 function Nav.find(cont, ax, ay, bx, by, cb)
     if not Nav.has(cont) then return nil, "nodata" end
@@ -260,7 +352,7 @@ function Nav.comp(cont, wx, wy)
     local cr = compGrid(cont)
     if not g or not cr then return nil end
     local r, c = toCell(g, wx, wy)
-    r, c = snap(g, r, c)
+    r, c = snap(g, r, c, staticCost)
     if not r then return nil end
     local b = cr[r]:byte(c)
     if not b or b == 97 then return nil end

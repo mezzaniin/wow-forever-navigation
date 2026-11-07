@@ -10,15 +10,24 @@ mit TomTom-Pfeil und in einem Schritt-Fenster an.
 - **Ziel setzen:** Strg+Klick auf die Weltkarte, `/route 45,2 60,1`, `/route Darnassus 40 50`
   oder über das **Suchfeld** oben links auf der Weltkarte.
 - **Suche:** Gebiete, Städte, Flugpunkte, Stege/Portale, **Dungeon-Eingänge**, **Quests**
-  (Annahme, Abgabe, Questziele für Quests im Log), **NPCs** (Name oder Titel, z. B. „Angellehrer“)
-  und **Objekte** – über die Datenbank von [Questie](https://github.com/Questie/Questie).
+  (Annahme, Abgabe, Questziele für Quests im Log), **NPCs** (Name oder Titel, z. B. „Angellehrer“),
+  **Objekte** und **Gegenstände** (nächster Fundort: Beute-NPC, Objekt oder Händler) – über die Datenbank
+  von [Questie](https://github.com/Questie/Questie). **Deutsch und Englisch** („Marshal Dughan“ findet
+  „Marschall Dughan“, der englische Name erscheint dann grau dahinter), Groß/klein, Akzente und Umlaute egal
+  (ä = ae = a, ß = ss), Wortteile in beliebiger Reihenfolge. Der Suchindex wird beim ersten Anklicken des
+  Suchfelds im Hintergrund aufgebaut (einige Sekunden, Fortschritt in der Liste); englische Gebiets- und
+  Flugpunktnamen stehen in `Names.lua` (erzeugt von `wowmap/scripts/build_addon_names.py`).
   Klick auf einen Treffer = Route dorthin.
 - **Wegführung um Gelände:** Navigationsraster (20 Yards) aus den Weltkarten von Forever:
   begehbar / Berg (teuer) / Wasser (Schwimmen) / gesperrt. A*-Suche im Spiel, über Frames verteilt.
   Laufen nur innerhalb zusammenhängender Bereiche – keine Luftlinien über Gebirge.
 - **Nur verfügbare Verkehrsmittel:** eigene Fraktion, nur entdeckte Flugpunkte (pro Charakter),
   Teleports nur wenn der Zauber bekannt ist.
-- **Gelernte Wege:** selbst gelaufene Wege werden gespeichert und bevorzugt.
+- **Gelernte Wege:** selbst gelaufene Wege (zu Fuß, Reittier, Schwimmen – nicht Flug, Transportmittel,
+  Geist, Instanz) werden gespeichert (`RoutePlanerDB.roads`, Punkt alle ~20 yd, max. 30 000 Punkte) und
+  **stark bevorzugt**: Wegpunkte sind Knoten im Planer, und die gelaufenen Rasterzellen gelten als begehbar
+  (auch wo das Raster Berg/Wasser/gesperrt sagt) mit Kosten 0,4 (Straße 0,6, frei 1). Die Webkarte erhält
+  sie nach `/reload` bzw. Ausloggen über das Begleitprogramm und rechnet identisch (Ebene „Gelaufene Wege“).
 - **Anzeige:** Linien auf Weltkarte und Minimap, Schritt-Fenster (Details-Stil),
   **Stufenbereiche aller Zonen** auf der Weltkarte (`/route stufen`).
 

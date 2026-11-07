@@ -240,6 +240,15 @@ local function layout()
     end
 end
 
+-- Forever/neuer Client: Positions-/Richtungswerte können "secret values" sein (z. B. im Kampf/in Instanzen).
+-- Mit solchen Werten darf ein Addon nicht rechnen/vergleichen -> als "keine Position" behandeln.
+local function plain(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(v) == "number" and not pcall(function() return v < math.huge end) then return nil end
+    return v
+end
+
 function Bridge.readPosition()
     local flags, x, y = 0, 0, 0
     local map = C_Map.GetBestMapForUnit("player")
@@ -247,13 +256,14 @@ function Bridge.readPosition()
         local pos = C_Map.GetPlayerMapPosition(map, "player")
         if pos then
             if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+            x, y = plain(x), plain(y)
             if x and y and (x > 0 or y > 0) then flags = 1 else x, y = 0, 0 end
         end
     end
     if IsInInstance and IsInInstance() then flags = flags + 2 end
     if UnitAffectingCombat and UnitAffectingCombat("player") then flags = flags + 4 end
     if UnitOnTaxi and UnitOnTaxi("player") then flags = flags + 8 end
-    return map or 0, x or 0, y or 0, (GetPlayerFacing and GetPlayerFacing()) or 0, flags
+    return plain(map) or 0, x or 0, y or 0, (GetPlayerFacing and plain(GetPlayerFacing())) or 0, flags
 end
 
 function Bridge.frameBytes(ftype)
